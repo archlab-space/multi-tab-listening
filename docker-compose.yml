@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: discord-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: discord_monitor
+      POSTGRES_USER: discord_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-defaultpassword123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - discord-network
+
+networks:
+  discord-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
