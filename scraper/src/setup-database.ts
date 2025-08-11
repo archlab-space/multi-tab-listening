@@ -16,6 +16,9 @@ export const setupDatabase = async () => {
     await client.connect();
     console.log('Connected to PostgreSQL');
 
+    // Enable pgvector extension
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+
     // Create channels table
     await client.query(`
       CREATE TABLE IF NOT EXISTS channels (
