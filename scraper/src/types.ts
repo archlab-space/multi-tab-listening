@@ -23,8 +23,13 @@ export interface Thread {
   channelId: string;
 }
 
+export interface ChannelInfo {
+  guildId: string;
+  channelId: string;
+}
+
 export interface Config {
-  channels: string[];
+  channels: ChannelInfo[];
   storageStatePath?: string;
   database: {
     user: string;

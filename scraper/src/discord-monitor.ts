@@ -4,7 +4,7 @@ import path from 'path'
 import winston from 'winston'
 import { Database } from './database.js'
 import { MessageFilter } from './message-filter.js'
-import { DiscordMessage, Channel, Config } from './types.js'
+import { DiscordMessage, Channel, Config, ChannelInfo } from './types.js'
 
 export class DiscordMonitor {
   private browser: Browser | null = null
@@ -85,8 +85,8 @@ export class DiscordMonitor {
       }
 
       // Monitor each channel in a separate tab
-      for (const channelId of this.config.channels) {
-        await this.createChannelTab(channelId)
+      for (const channel of this.config.channels) {
+        await this.createChannelTab(channel)
       }
 
       this.logger.info(
@@ -98,19 +98,19 @@ export class DiscordMonitor {
     }
   }
 
-  private async createChannelTab(channelId: string): Promise<void> {
+  private async createChannelTab(channel: ChannelInfo): Promise<void> {
     if (!this.context) {
       throw new Error('Browser context not initialized')
     }
 
     try {
       const page = await this.context.newPage()
-      this.pages.set(channelId, page)
+      this.pages.set(channel.channelId, page)
 
       // Set up message handler
       page.on('console', (msg) => {
         if (msg.text().includes('Discord observer:')) {
-          this.logger.debug(`[${channelId}] ${msg.text()}`)
+          this.logger.debug(`[${channel.channelId}] ${msg.text()}`)
         }
       })
 
@@ -118,12 +118,12 @@ export class DiscordMonitor {
       await page.exposeFunction(
         'handleDiscordMessage',
         async (messageData: DiscordMessage) => {
-          await this.handleDiscordMessage(messageData, channelId)
+          await this.handleDiscordMessage(messageData, channel.channelId)
         },
       )
 
       // Navigate to Discord channel
-      const discordUrl = `https://discord.com/channels/@me/${channelId}`
+      const discordUrl = `https://discord.com/channels/${channel.guildId}/${channel.channelId}`
       await page.goto(discordUrl, { waitUntil: 'domcontentloaded' })
 
       // Wait for Discord to load
@@ -133,20 +133,20 @@ export class DiscordMonitor {
       await page.addInitScript(this.observerScript)
       await page.evaluate(this.observerScript)
 
-      this.logger.info(`Created tab for channel: ${channelId}`)
+      this.logger.info(`Created tab for channel: ${channel.channelId}`)
 
       // Store channel info
       const channelInfo: Channel = {
-        channelId,
+        channelId: channel.channelId,
         channelName: await this.extractChannelName(page),
-        guildId: await this.extractGuildId(page),
+        guildId: channel.guildId,
         guildName: await this.extractGuildName(page),
       }
 
       await this.database.insertChannel(channelInfo)
     } catch (error) {
-      this.logger.error(`Failed to create tab for channel ${channelId}:`, error)
-      this.pages.delete(channelId)
+      this.logger.error(`Failed to create tab for channel ${channel.channelId}:`, error)
+      this.pages.delete(channel.channelId)
     }
   }
 

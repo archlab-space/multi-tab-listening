@@ -1,13 +1,20 @@
 import dotenv from 'dotenv'
-import { Config } from './types.js'
+import { Config, ChannelInfo } from './types.js'
 
 dotenv.config()
 
-function parseChannelsList(channelsStr: string = ''): string[] {
+function parseChannelsList(channelsStr: string = ''): ChannelInfo[] {
   return channelsStr
     .split(',')
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
+    .map((pair) => pair.trim())
+    .filter((pair) => pair.length > 0)
+    .map((pair) => {
+      const [guildId, channelId] = pair.split('/')
+      if (!guildId || !channelId) {
+        throw new Error(`Invalid channel format: ${pair}. Expected format: guild_id/channel_id`)
+      }
+      return { guildId: guildId.trim(), channelId: channelId.trim() }
+    })
 }
 
 function parseTrivialPhrases(phrasesStr: string = ''): string[] {
@@ -64,11 +71,16 @@ export function validateConfig(config: Config): void {
     )
   }
 
-  // Validate channel IDs are numeric strings
-  for (const channelId of config.channels) {
-    if (!/^\d+$/.test(channelId)) {
+  // Validate channel format
+  for (const channel of config.channels) {
+    if (!/^\d+$/.test(channel.guildId)) {
       throw new Error(
-        `Invalid channel ID: ${channelId}. Channel IDs should be numeric strings.`,
+        `Invalid guild ID: ${channel.guildId}. Guild IDs should be numeric strings.`,
+      )
+    }
+    if (!/^\d+$/.test(channel.channelId)) {
+      throw new Error(
+        `Invalid channel ID: ${channel.channelId}. Channel IDs should be numeric strings.`,
       )
     }
   }
