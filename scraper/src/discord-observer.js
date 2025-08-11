@@ -11,38 +11,61 @@
     try {
       // Discord's message structure - updated for current DOM
       let messageId = null
-      
+
       // Extract message ID from the li element's ID (format: chat-messages-{guild/channel}-{messageId})
       if (messageElement.id?.startsWith('chat-messages-')) {
         const parts = messageElement.id.replace('chat-messages-', '').split('-')
         messageId = parts[parts.length - 1] // Last part is the actual message ID
       }
-      
+
       // Fallback to data attributes
       if (!messageId) {
-        messageId = messageElement.getAttribute('data-message-id') ||
-                   messageElement.querySelector('[data-message-id]')?.getAttribute('data-message-id')
+        messageId =
+          messageElement.getAttribute('data-message-id') ||
+          messageElement
+            .querySelector('[data-message-id]')
+            ?.getAttribute('data-message-id')
       }
 
       if (!messageId) return null
 
-      // Extract content from the main message content
+      // Extract content from the main message content (avoid reply content)
       const contentElement =
-        messageElement.querySelector('.messageContent_c19a55') ||
-        messageElement.querySelector('[class*="messageContent"]') ||
-        messageElement.querySelector('.markup__75297') ||
-        messageElement.querySelector('[class*="markup"]')
+        messageElement.querySelector(
+          '.contents_c19a55 .messageContent_c19a55',
+        ) ||
+        messageElement.querySelector(
+          '.contents_c19a55 [class*="messageContent"]',
+        ) ||
+        messageElement.querySelector('.contents_c19a55 .markup__75297') ||
+        messageElement.querySelector('.contents_c19a55 [class*="markup"]') ||
+        // Fallback to any messageContent if contents wrapper not found
+        messageElement.querySelector(
+          '.messageContent_c19a55:not(.repliedTextContent_c19a55)',
+        ) ||
+        messageElement.querySelector(
+          '[class*="messageContent"]:not([class*="replied"])',
+        )
       const content = contentElement?.textContent?.trim() || ''
 
-      // Extract author info from the username span
+      // Extract author info from the username span (avoid reply author)
       const authorElement =
-        messageElement.querySelector('.username_c19a55') ||
-        messageElement.querySelector('[class*="username"]')
+        messageElement.querySelector('.contents_c19a55 .username_c19a55') ||
+        messageElement.querySelector('.contents_c19a55 [class*="username"]') ||
+        // Fallback to any username not in replied message section
+        messageElement.querySelector(
+          '.username_c19a55:not(.repliedMessage_c19a55 .username_c19a55)',
+        ) ||
+        messageElement.querySelector(
+          '[class*="username"]:not(.repliedMessage_c19a55 [class*="username"])',
+        )
       const authorName = authorElement?.textContent?.trim() || 'Unknown'
 
-      // Extract author ID from avatar image src (Discord CDN pattern)
+      // Extract author ID from avatar image src (Discord CDN pattern, avoid reply avatar)
       let authorId = 'unknown'
-      const avatarElement = messageElement.querySelector('.avatar_c19a55')
+      const avatarElement =
+        messageElement.querySelector('.contents_c19a55 .avatar_c19a55') ||
+        messageElement.querySelector('.avatar_c19a55:not(.replyAvatar_c19a55)')
       if (avatarElement?.src) {
         const avatarMatch = avatarElement.src.match(/\/avatars\/(\d+)\//)
         if (avatarMatch) {
@@ -52,14 +75,19 @@
 
       // Extract timestamp
       const timestampElement = messageElement.querySelector('time[datetime]')
-      const timestamp = timestampElement?.getAttribute('datetime') || new Date().toISOString()
+      const timestamp =
+        timestampElement?.getAttribute('datetime') || new Date().toISOString()
 
       // Check for reply info - updated for new Discord structure
       let replyToMessageId = null
-      const replyElement = messageElement.querySelector('.repliedMessage_c19a55')
+      const replyElement = messageElement.querySelector(
+        '.repliedMessage_c19a55',
+      )
       if (replyElement) {
         // Try to extract reply message ID from the replied content element
-        const repliedContent = replyElement.querySelector('[id^="message-content-"]')
+        const repliedContent = replyElement.querySelector(
+          '[id^="message-content-"]',
+        )
         if (repliedContent?.id) {
           replyToMessageId = repliedContent.id.replace('message-content-', '')
         }
@@ -76,7 +104,8 @@
         : null
 
       // Check if this message has a reply (has the reply class)
-      const hasReply = messageElement.querySelector('[class*="hasReply"]') !== null
+      const hasReply =
+        messageElement.querySelector('[class*="hasReply"]') !== null
 
       return {
         messageId,
@@ -123,10 +152,16 @@
       window.handleDiscordMessage(messageData)
     }
 
-    console.log(
-      'New Discord message detected:',
-      messageData.content.substring(0, 50) + '...',
-    )
+    console.log('🔍 New Discord message detected:', {
+      messageId: messageData.messageId,
+      channelId: messageData.channelId,
+      authorId: messageData.authorId,
+      authorName: messageData.authorName,
+      content: messageData.content,
+      timestamp: messageData.timestamp,
+      replyToMessageId: messageData.replyToMessageId,
+      threadId: messageData.threadId,
+    })
   }
 
   function startObserving() {
