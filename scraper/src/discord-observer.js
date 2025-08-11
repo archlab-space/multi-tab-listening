@@ -9,61 +9,74 @@
 
   function extractMessageData(messageElement) {
     try {
-      // Discord's message structure (may need updates as Discord changes their DOM)
-      const messageId =
-        messageElement.id?.replace('chat-messages-', '') ||
-        messageElement.getAttribute('data-message-id') ||
-        messageElement
-          .querySelector('[data-message-id]')
-          ?.getAttribute('data-message-id')
+      // Discord's message structure - updated for current DOM
+      let messageId = null
+      
+      // Extract message ID from the li element's ID (format: chat-messages-{guild/channel}-{messageId})
+      if (messageElement.id?.startsWith('chat-messages-')) {
+        const parts = messageElement.id.replace('chat-messages-', '').split('-')
+        messageId = parts[parts.length - 1] // Last part is the actual message ID
+      }
+      
+      // Fallback to data attributes
+      if (!messageId) {
+        messageId = messageElement.getAttribute('data-message-id') ||
+                   messageElement.querySelector('[data-message-id]')?.getAttribute('data-message-id')
+      }
 
       if (!messageId) return null
 
-      // Extract content
+      // Extract content from the main message content
       const contentElement =
-        messageElement.querySelector('[data-slate-editor="true"]') ||
-        messageElement.querySelector('.messageContent') ||
-        messageElement.querySelector('.markup')
+        messageElement.querySelector('.messageContent_c19a55') ||
+        messageElement.querySelector('[class*="messageContent"]') ||
+        messageElement.querySelector('.markup__75297') ||
+        messageElement.querySelector('[class*="markup"]')
       const content = contentElement?.textContent?.trim() || ''
 
-      // Extract author info
+      // Extract author info from the username span
       const authorElement =
-        messageElement.querySelector('.username') ||
+        messageElement.querySelector('.username_c19a55') ||
         messageElement.querySelector('[class*="username"]')
       const authorName = authorElement?.textContent?.trim() || 'Unknown'
 
-      // Extract author ID (harder to get, might be in click handlers or data attributes)
-      const authorId =
-        messageElement
-          .querySelector('[data-user-id]')
-          ?.getAttribute('data-user-id') ||
-        authorElement?.getAttribute('data-user-id') ||
-        'unknown'
+      // Extract author ID from avatar image src (Discord CDN pattern)
+      let authorId = 'unknown'
+      const avatarElement = messageElement.querySelector('.avatar_c19a55')
+      if (avatarElement?.src) {
+        const avatarMatch = avatarElement.src.match(/\/avatars\/(\d+)\//)
+        if (avatarMatch) {
+          authorId = avatarMatch[1]
+        }
+      }
 
       // Extract timestamp
-      const timestampElement =
-        messageElement.querySelector('time') ||
-        messageElement.querySelector('[datetime]')
-      const timestamp =
-        timestampElement?.getAttribute('datetime') ||
-        timestampElement?.getAttribute('title') ||
-        new Date().toISOString()
+      const timestampElement = messageElement.querySelector('time[datetime]')
+      const timestamp = timestampElement?.getAttribute('datetime') || new Date().toISOString()
 
-      // Check for reply/thread info
-      const replyElement =
-        messageElement.querySelector('[class*="replying"]') ||
-        messageElement.querySelector('.repliedMessage')
-      const replyToMessageId =
-        replyElement?.getAttribute('data-message-id') || null
+      // Check for reply info - updated for new Discord structure
+      let replyToMessageId = null
+      const replyElement = messageElement.querySelector('.repliedMessage_c19a55')
+      if (replyElement) {
+        // Try to extract reply message ID from the replied content element
+        const repliedContent = replyElement.querySelector('[id^="message-content-"]')
+        if (repliedContent?.id) {
+          replyToMessageId = repliedContent.id.replace('message-content-', '')
+        }
+      }
 
-      // Extract channel info from URL or page context
-      const channelId = window.location.pathname.split('/').pop() || 'unknown'
+      // Extract channel info from URL
+      const pathParts = window.location.pathname.split('/')
+      const channelId = pathParts[pathParts.length - 1] || 'unknown'
 
       // Check if it's in a thread
       const isThread = window.location.pathname.includes('/threads/')
       const threadId = isThread
         ? window.location.pathname.split('/threads/')[1]?.split('/')[0]
         : null
+
+      // Check if this message has a reply (has the reply class)
+      const hasReply = messageElement.querySelector('[class*="hasReply"]') !== null
 
       return {
         messageId,
@@ -76,7 +89,9 @@
         threadId,
         rawData: {
           url: window.location.href,
-          element: messageElement.outerHTML.substring(0, 500), // Truncate for storage
+          element: messageElement.outerHTML.substring(0, 1000), // Increased for better debugging
+          hasReply,
+          isReply: replyToMessageId !== null,
           author: {
             name: authorName,
             id: authorId,
@@ -115,11 +130,11 @@
   }
 
   function startObserving() {
-    // Find the messages container
+    // Find the messages container - updated selectors for current Discord
     const messagesContainer =
       document.querySelector('[data-list-id="chat-messages"]') ||
-      document.querySelector('.messages') ||
-      document.querySelector('[class*="messages"]') ||
+      document.querySelector('ol[class*="scrollerInner"]') ||
+      document.querySelector('[class*="messagesWrapper"]') ||
       document.querySelector('.scroller')
 
     if (!messagesContainer) {
@@ -132,11 +147,11 @@
       'Discord observer: Found messages container, starting to observe...',
     )
 
-    // Process existing messages first
+    // Process existing messages first - look for li elements with message IDs
     const existingMessages =
-      messagesContainer.querySelectorAll('[id^="chat-messages-"]') ||
-      messagesContainer.querySelectorAll('[data-message-id]') ||
-      messagesContainer.querySelectorAll('.message')
+      messagesContainer.querySelectorAll('li[id^="chat-messages-"]') ||
+      messagesContainer.querySelectorAll('.messageListItem__5126c') ||
+      messagesContainer.querySelectorAll('[class*="messageListItem"]')
 
     existingMessages.forEach((messageElement) => {
       const messageData = extractMessageData(messageElement)
@@ -150,18 +165,18 @@
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if the added node is a message
+            // Check if the added node is a message list item
             if (
               node.id?.startsWith('chat-messages-') ||
-              node.getAttribute?.('data-message-id') ||
-              node.classList?.contains('message')
+              node.classList?.contains('messageListItem__5126c') ||
+              node.classList?.contains('messageListItem')
             ) {
               handleNewMessage(node)
             }
 
-            // Check if the added node contains messages
+            // Check if the added node contains message list items
             const messageElements = node.querySelectorAll?.(
-              '[id^="chat-messages-"], [data-message-id], .message',
+              'li[id^="chat-messages-"], .messageListItem__5126c, [class*="messageListItem"]',
             )
             messageElements?.forEach(handleNewMessage)
           }
