@@ -1,7 +1,7 @@
-import { Client } from 'pg';
-import dotenv from 'dotenv';
+import { Client } from 'pg'
+import dotenv from 'dotenv'
 
-dotenv.config();
+dotenv.config()
 
 export const setupDatabase = async () => {
   const client = new Client({
@@ -10,14 +10,14 @@ export const setupDatabase = async () => {
     database: process.env.DB_NAME || 'discord_monitor',
     password: process.env.DB_PASSWORD,
     port: parseInt(process.env.DB_PORT || '5432'),
-  });
+  })
 
   try {
-    await client.connect();
-    console.log('Connected to PostgreSQL');
+    await client.connect()
+    console.log('Connected to PostgreSQL')
 
     // Enable pgvector extension
-    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector')
 
     // Create channels table
     await client.query(`
@@ -29,7 +29,7 @@ export const setupDatabase = async () => {
         guild_name VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
-    `);
+    `)
 
     // Create messages table
     await client.query(`
@@ -46,11 +46,10 @@ export const setupDatabase = async () => {
         is_filtered BOOLEAN DEFAULT FALSE,
         raw_data JSONB,
         embedding VECTOR(1536),
+        processed BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (channel_id) REFERENCES channels(channel_id),
-        FOREIGN KEY (reply_to_message_id) REFERENCES messages(message_id)
       )
-    `);
+    `)
 
     // Create threads table for better thread management
     await client.query(`
@@ -60,28 +59,23 @@ export const setupDatabase = async () => {
         original_message_id VARCHAR(255) NOT NULL,
         channel_id VARCHAR(255) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (original_message_id) REFERENCES messages(message_id),
-        FOREIGN KEY (channel_id) REFERENCES channels(channel_id)
       )
-    `);
+    `)
 
     // Create indexes for performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_messages_author_id ON messages(author_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to_message_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
-    `);
+    `)
 
-    console.log('Database schema created successfully');
+    console.log('Database schema created successfully')
   } catch (err) {
-    console.error('Error setting up database:', err);
+    console.error('Error setting up database:', err)
   } finally {
-    await client.end();
+    await client.end()
   }
-};
+}
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  setupDatabase();
+  setupDatabase()
 }
