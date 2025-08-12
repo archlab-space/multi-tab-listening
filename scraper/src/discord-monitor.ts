@@ -59,6 +59,9 @@ export class DiscordMonitor {
       // Launch browser
       this.browser = await chromium.launch({
         headless: false, // Keep visible for debugging
+        handleSIGINT: false, // Disable automatic browser close on Ctrl+C
+        handleSIGTERM: false, // Disable automatic browser close on SIGTERM
+        handleSIGHUP: false, // Disable automatic browser close on SIGHUP
         args: [
           '--no-sandbox',
           '--disable-dev-shm-usage',
