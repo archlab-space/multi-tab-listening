@@ -145,7 +145,10 @@ export class DiscordMonitor {
 
       await this.database.insertChannel(channelInfo)
     } catch (error) {
-      this.logger.error(`Failed to create tab for channel ${channel.channelId}:`, error)
+      this.logger.error(
+        `Failed to create tab for channel ${channel.channelId}:`,
+        error,
+      )
       this.pages.delete(channel.channelId)
     }
   }
@@ -204,8 +207,14 @@ export class DiscordMonitor {
           })
         : true
 
-      // Store message in database
-      await this.database.insertMessage(message, !shouldProcess)
+      // Skip messages with unknown author
+      const hasUnknownAuthor =
+        message.authorId === 'unknown' && message.authorName === 'unknown'
+
+      // Only store message if it should be processed (not filtered) and has known author
+      if (shouldProcess && !hasUnknownAuthor) {
+        await this.database.insertMessage(message, false)
+      }
 
       if (shouldProcess) {
         this.logger.info(

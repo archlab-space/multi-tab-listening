@@ -59,7 +59,7 @@
         messageElement.querySelector(
           '[class*="username"]:not(.repliedMessage_c19a55 [class*="username"])',
         )
-      const authorName = authorElement?.textContent?.trim() || 'Unknown'
+      const authorName = authorElement?.textContent?.trim() || 'unknown'
 
       // Extract author ID from avatar image src (Discord CDN pattern, avoid reply avatar)
       let authorId = 'unknown'

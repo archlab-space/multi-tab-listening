@@ -11,7 +11,9 @@ function parseChannelsList(channelsStr: string = ''): ChannelInfo[] {
     .map((pair) => {
       const [guildId, channelId] = pair.split('/')
       if (!guildId || !channelId) {
-        throw new Error(`Invalid channel format: ${pair}. Expected format: guild_id/channel_id`)
+        throw new Error(
+          `Invalid channel format: ${pair}. Expected format: guild_id/channel_id`,
+        )
       }
       return { guildId: guildId.trim(), channelId: channelId.trim() }
     })
@@ -46,7 +48,7 @@ export function loadConfig(): Config {
     filtering: {
       enabled: process.env.ENABLE_FILTERING?.toLowerCase() === 'true' || true,
       trivialPhrases: parseTrivialPhrases(process.env.CUSTOM_TRIVIAL_PHRASES),
-      minLength: parseInt(process.env.MIN_MESSAGE_LENGTH || '15'),
+      minLength: parseInt(process.env.MIN_MESSAGE_LENGTH || '30'),
     },
   }
 
