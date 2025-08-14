@@ -47,7 +47,10 @@ export const setupDatabase = async () => {
         raw_data JSONB,
         embedding VECTOR(1536),
         processed BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_question BOOLEAN DEFAULT NULL,
+        question_confidence INTEGER DEFAULT NULL,
+        question_type VARCHAR(50) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
@@ -66,6 +69,19 @@ export const setupDatabase = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_processed ON messages(processed, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_is_question ON messages(is_question);
+      CREATE INDEX IF NOT EXISTS idx_messages_author_id ON messages(author_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to_message_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp ON messages(channel_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_context_search ON messages(channel_id, is_question, timestamp);
+    `)
+
+    // Create full-text search index for content
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_messages_content_fts 
+      ON messages USING GIN(to_tsvector('english', content));
     `)
 
     console.log('Database schema created successfully')

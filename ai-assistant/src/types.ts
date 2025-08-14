@@ -24,4 +24,9 @@ export interface AIConfig {
     intervalMinutes: number;
     batchSize: number;
   };
+  context: {
+    keywordSearchDays: number;
+    fallbackSearchDays: number;
+    maxContextMessages: number;
+  };
 }

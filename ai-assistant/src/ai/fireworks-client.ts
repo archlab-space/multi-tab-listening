@@ -84,18 +84,23 @@ export class FireworksClient {
         throw new Error(`Fireworks API error: ${response.status} - ${errorText}`);
       }
 
-      const data: FireworksResponse = await response.json();
+      const data = await response.json() as FireworksResponse;
       
       if (!data.choices || data.choices.length === 0) {
         throw new Error('No response choices returned from Fireworks AI');
       }
 
-      const result = data.choices[0].message.content;
+      const firstChoice = data.choices[0];
+      if (!firstChoice || !firstChoice.message) {
+        throw new Error('Invalid response format from Fireworks AI');
+      }
+
+      const result = firstChoice.message.content;
       
       this.logger.info('Fireworks AI response received', {
         responseLength: result.length,
         usage: data.usage,
-        finishReason: data.choices[0].finish_reason
+        finishReason: firstChoice.finish_reason
       });
 
       return result;
@@ -180,35 +185,48 @@ Respond ONLY with a JSON object in this exact format:
     context: Array<{ content: string; author: string; timestamp: Date }>,
     channelContext?: string
   ): Promise<string> {
-    const contextText = context
-      .map(msg => `${msg.author} (${msg.timestamp.toISOString()}): ${msg.content}`)
-      .join('\n');
+    const hasContext = context && context.length > 0;
+    const contextText = hasContext 
+      ? context.map(msg => `${msg.author} (${msg.timestamp.toISOString()}): ${msg.content}`).join('\n')
+      : '';
 
     const messages: FireworksMessage[] = [
       {
         role: 'system',
-        content: `You are a helpful assistant that answers Discord questions based on previous channel conversations.
+        content: `You are a helpful Discord assistant that provides accurate and concise answers to user questions.
+
+Your approach:
+1. FIRST: Check if the provided channel context contains relevant information to answer the question
+2. If the context is helpful and relevant, use it to provide a specific answer with references
+3. If the context is empty, incomplete, or not relevant to the question, draw from your general knowledge
+4. Always be honest about your information sources
 
 Guidelines:
-- Use the provided context to give relevant, accurate answers
-- If the context doesn't contain enough information, say so clearly
-- Keep answers concise and Discord-appropriate (not too long)
-- Reference specific previous messages when relevant
-- Be conversational but informative
-- If you're not sure, express uncertainty rather than guessing
+- Keep answers concise and Discord-appropriate (1-3 short paragraphs max)
+- Be conversational and helpful
+- When using context: Reference specific messages or users when relevant
+- When using general knowledge: Be clear that you're providing general information
+- If unsure about specifics, acknowledge uncertainty
+- Avoid overly long explanations
 
-The context below contains previous messages from the same Discord channel.`
+Context quality: The provided context contains recent messages from this Discord channel that may or may not be relevant to the current question.`
       },
       {
         role: 'user',
-        content: `Question: ${question}
+        content: hasContext 
+          ? `Question: ${question}
 
-${channelContext ? `Channel context: ${channelContext}\n` : ''}
+${channelContext ? `Channel: ${channelContext}\n` : ''}
 
-Previous messages for context:
+Recent channel messages (ranked by relevance):
 ${contextText}
 
-Please provide a helpful answer based on this information.`
+Please answer the question. Use the channel context if it's relevant, otherwise provide a helpful answer based on your knowledge.`
+          : `Question: ${question}
+
+${channelContext ? `Channel: ${channelContext}\n` : ''}
+
+No relevant channel context available. Please provide a helpful answer based on your general knowledge.`
       }
     ];
 

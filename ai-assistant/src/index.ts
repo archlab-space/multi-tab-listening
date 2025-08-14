@@ -18,11 +18,8 @@ async function main() {
     process.exit(0);
   });
 
-  // Start the message polling
-  poller.start();
-
-  // Keep the process alive
-  console.log('✅ Message poller started. Press Ctrl+C to stop.');
+  // Start the message polling (this will run continuously)
+  await poller.start();
 }
 
 main().catch(console.error);

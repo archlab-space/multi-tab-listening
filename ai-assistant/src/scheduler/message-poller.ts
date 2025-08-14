@@ -1,4 +1,3 @@
-import * as cron from 'node-cron';
 import winston from 'winston';
 import { DatabaseQueries } from '../database/queries.js';
 import { MessageAnalyzer } from '../ai/message-analyzer.js';
@@ -10,7 +9,8 @@ export class MessagePoller {
   private db: DatabaseQueries;
   private analyzer: MessageAnalyzer;
   private logger: winston.Logger;
-  private isProcessing: boolean = false;
+  private isRunning: boolean = false;
+  private shouldStop: boolean = false;
   private onQuestionsFound?: (questions: QuestionAnalysis[]) => Promise<void>;
 
   constructor() {
@@ -31,13 +31,8 @@ export class MessagePoller {
   }
 
   async processNewMessages(): Promise<QuestionAnalysis[]> {
-    if (this.isProcessing) {
-      this.logger.warn('Previous processing still running, skipping this cycle');
-      return [];
-    }
-
-    this.isProcessing = true;
-
+    const startTime = Date.now();
+    
     try {
       this.logger.info('Starting message processing cycle');
 
@@ -55,10 +50,21 @@ export class MessagePoller {
       // Analyze messages with AI
       const analyses = await this.analyzer.analyzeMessages(unprocessedMessages);
       
+      // Store question analysis results in database
+      for (const analysis of analyses) {
+        await this.db.updateMessageQuestionAnalysis(
+          analysis.message.messageId,
+          analysis.isQuestion,
+          analysis.confidence,
+          analysis.questionType
+        );
+      }
+      
       // Filter for high-confidence questions
       const questions = await this.analyzer.filterQuestions(analyses, 70);
 
-      this.logger.info(`Found ${questions.length} questions out of ${analyses.length} messages`);
+      const processingTime = Date.now() - startTime;
+      this.logger.info(`Found ${questions.length} questions out of ${analyses.length} messages (${processingTime}ms)`);
 
       // Mark all messages as processed
       const messageIds = unprocessedMessages.map(msg => msg.messageId);
@@ -72,10 +78,9 @@ export class MessagePoller {
       return questions;
 
     } catch (error) {
-      this.logger.error('Error processing messages:', error);
+      const processingTime = Date.now() - startTime;
+      this.logger.error('Error processing messages:', { error, processingTime });
       return [];
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -88,19 +93,73 @@ export class MessagePoller {
     }
   }
 
-  start(): void {
-    const cronExpression = `*/${config.polling.intervalMinutes} * * * *`;
-    
-    this.logger.info(`Starting message poller with ${config.polling.intervalMinutes}min interval`);
+  async start(): Promise<void> {
+    if (this.isRunning) {
+      this.logger.warn('Message poller is already running');
+      return;
+    }
 
-    cron.schedule(cronExpression, async () => {
-      await this.processNewMessages();
-    });
+    this.isRunning = true;
+    this.shouldStop = false;
+    
+    this.logger.info(`Starting message poller with ${config.polling.intervalMinutes}min base interval`);
+
+    await this.processingLoop();
+  }
+
+  private async processingLoop(): Promise<void> {
+    while (!this.shouldStop) {
+      try {
+        const questions = await this.processNewMessages();
+        
+        // Adaptive delay based on activity
+        let delay: number;
+        if (questions.length > 0) {
+          // Found questions - check again sooner
+          delay = 30000; // 30 seconds
+          this.logger.info(`Found ${questions.length} questions, checking again in 30s`);
+        } else {
+          // No questions - standard interval
+          delay = config.polling.intervalMinutes * 60 * 1000; // Convert minutes to ms
+          this.logger.info(`No questions found, checking again in ${config.polling.intervalMinutes}m`);
+        }
+
+        // Wait with interruption support
+        await this.interruptibleDelay(delay);
+        
+      } catch (error) {
+        this.logger.error('Error in processing loop:', error);
+        
+        // Back off on error - wait 2 minutes
+        await this.interruptibleDelay(120000);
+      }
+    }
+
+    this.logger.info('Processing loop stopped');
+    this.isRunning = false;
+  }
+
+  private async interruptibleDelay(ms: number): Promise<void> {
+    const checkInterval = 1000; // Check for stop signal every second
+    let elapsed = 0;
+    
+    while (elapsed < ms && !this.shouldStop) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, ms - elapsed)));
+      elapsed += checkInterval;
+    }
   }
 
   async stop(): Promise<void> {
     this.logger.info('Stopping message poller...');
+    this.shouldStop = true;
+    
+    // Wait for processing loop to finish
+    while (this.isRunning) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
     await this.db.close();
+    this.logger.info('Message poller stopped');
   }
 
   // Set callback for when questions are found
