@@ -37,6 +37,7 @@ export const setupDatabase = async () => {
         id SERIAL PRIMARY KEY,
         message_id VARCHAR(255) UNIQUE NOT NULL,
         channel_id VARCHAR(255) NOT NULL,
+        guild_id VARCHAR(255) NOT NULL,
         author_id VARCHAR(255),
         author_name VARCHAR(255),
         content TEXT,
@@ -76,6 +77,7 @@ export const setupDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to_message_id);
       CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp ON messages(channel_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_context_search ON messages(channel_id, is_question, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_guild_id ON messages(guild_id);
     `)
 
     // Create full-text search index for content

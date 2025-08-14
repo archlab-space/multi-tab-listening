@@ -121,6 +121,8 @@ export class DiscordMonitor {
       await page.exposeFunction(
         'handleDiscordMessage',
         async (messageData: DiscordMessage) => {
+          // Ensure guildId is set for the message
+          messageData.guildId = channel.guildId
           await this.handleDiscordMessage(messageData, channel.channelId)
         },
       )
@@ -159,22 +161,26 @@ export class DiscordMonitor {
   private async extractChannelName(page: Page): Promise<string | undefined> {
     try {
       return await page.evaluate(() => {
+        // Try to find the selected channel in the sidebar first
+        const selectedChannelElement = 
+          document.querySelector('li[class*="selected_"][data-dnd-name]') ||
+          document.querySelector('li.selected[data-dnd-name]') ||
+          // Fallback to any channel with data-dnd-name in the current view
+          document.querySelector('[data-dnd-name]')
+        
+        if (selectedChannelElement) {
+          const channelName = selectedChannelElement.getAttribute('data-dnd-name')
+          if (channelName) return channelName
+        }
+        
+        // Fallback to other selectors for channel name in header/title areas
         const nameElement =
           document.querySelector('h1[class*="title"]') ||
-          document.querySelector('[data-dnd-name]') ||
-          document.querySelector('.channel-name')
+          document.querySelector('.channel-name') ||
+          document.querySelector('[aria-label*="channel"]')
+        
         return nameElement?.textContent?.trim()
       })
-    } catch {
-      return undefined
-    }
-  }
-
-  private async extractGuildId(page: Page): Promise<string | undefined> {
-    try {
-      const url = page.url()
-      const match = url.match(/\/channels\/(\d+)\//)
-      return match?.[1]
     } catch {
       return undefined
     }
@@ -183,13 +189,19 @@ export class DiscordMonitor {
   private async extractGuildName(page: Page): Promise<string | undefined> {
     try {
       return await page.evaluate(() => {
-        const guildElement =
+        // Try the new Discord UI structure first
+        const guildNameElement =
+          document.querySelector('h2[class*="name_"]') ||
+          document.querySelector('h2[data-text-variant="text-md/semibold"]') ||
+          document.querySelector('.headerContent_f37cb1 h2') ||
+          // Fallback to older selectors
           document.querySelector('[data-dnd-name]') ||
           document.querySelector('.guild-name') ||
           document.querySelector('h1')
+
         return (
-          guildElement?.getAttribute('data-dnd-name') ||
-          guildElement?.textContent?.trim()
+          guildNameElement?.getAttribute('data-dnd-name') ||
+          guildNameElement?.textContent?.trim()
         )
       })
     } catch {

@@ -1,6 +1,7 @@
 import winston from 'winston';
 import { DatabaseQueries } from '../database/queries.js';
 import { MessageAnalyzer } from '../ai/message-analyzer.js';
+import { DiscordWebhookSender } from '../discord/webhook-sender.js';
 import { config } from '../config.js';
 import type { DiscordMessage } from '../types.js';
 import type { QuestionAnalysis } from '../ai/message-analyzer.js';
@@ -8,6 +9,7 @@ import type { QuestionAnalysis } from '../ai/message-analyzer.js';
 export class MessagePoller {
   private db: DatabaseQueries;
   private analyzer: MessageAnalyzer;
+  private webhookSender: DiscordWebhookSender;
   private logger: winston.Logger;
   private isRunning: boolean = false;
   private shouldStop: boolean = false;
@@ -16,6 +18,7 @@ export class MessagePoller {
   constructor() {
     this.db = new DatabaseQueries();
     this.analyzer = new MessageAnalyzer();
+    this.webhookSender = new DiscordWebhookSender();
     
     this.logger = winston.createLogger({
       level: 'info',
@@ -69,6 +72,17 @@ export class MessagePoller {
       // Mark all messages as processed
       const messageIds = unprocessedMessages.map(msg => msg.messageId);
       await this.markMessagesAsProcessed(messageIds);
+
+      // Send questions to Discord webhook
+      if (questions.length > 0) {
+        try {
+          await this.webhookSender.sendMultipleQuestions(questions);
+          this.logger.info(`Sent ${questions.length} questions to Discord webhook`);
+        } catch (error) {
+          this.logger.error('Failed to send questions to Discord webhook:', error);
+          // Continue processing even if webhook fails
+        }
+      }
 
       // Notify callback if questions found
       if (questions.length > 0 && this.onQuestionsFound) {
@@ -171,5 +185,11 @@ export class MessagePoller {
   async triggerProcessing(): Promise<QuestionAnalysis[]> {
     this.logger.info('Manual trigger for message processing');
     return await this.processNewMessages();
+  }
+
+  // Test webhook connection
+  async testWebhook(): Promise<boolean> {
+    this.logger.info('Testing Discord webhook connection');
+    return await this.webhookSender.testWebhook();
   }
 }

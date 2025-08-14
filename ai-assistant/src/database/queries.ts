@@ -30,7 +30,7 @@ export class DatabaseQueries {
   async getUnprocessedMessages(limit: number = 50): Promise<DiscordMessage[]> {
     const query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data
       FROM messages 
       WHERE processed = FALSE 
@@ -45,6 +45,7 @@ export class DatabaseQueries {
       return result.rows.map((row) => ({
         messageId: row.message_id,
         channelId: row.channel_id,
+        guildId: row.guild_id,
         authorId: row.author_id,
         authorName: row.author_name,
         content: row.content,
@@ -125,7 +126,7 @@ export class DatabaseQueries {
   ): Promise<DiscordMessage[]> {
     let query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data
       FROM messages 
       WHERE is_question = TRUE 
@@ -209,7 +210,7 @@ export class DatabaseQueries {
   ): Promise<DiscordMessage[]> {
     const query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data
       FROM messages 
       WHERE channel_id = $1 
@@ -247,7 +248,7 @@ export class DatabaseQueries {
 
     const query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data,
         ts_rank(to_tsvector('english', content), plainto_tsquery('english', $2)) as relevance_score
       FROM messages 
@@ -292,7 +293,7 @@ export class DatabaseQueries {
 
     const query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data
       FROM messages 
       WHERE channel_id = $1 
@@ -320,7 +321,7 @@ export class DatabaseQueries {
   ): Promise<DiscordMessage[]> {
     const query = `
       SELECT 
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, raw_data
       FROM messages 
       WHERE channel_id = $1 
@@ -427,6 +428,7 @@ export class DatabaseQueries {
   private mapRowToMessage = (row: any): DiscordMessage => ({
     messageId: row.message_id,
     channelId: row.channel_id,
+    guildId: row.guild_id,
     authorId: row.author_id,
     authorName: row.author_name,
     content: row.content,

@@ -56,10 +56,10 @@ export class Database {
   async insertMessage(message: DiscordMessage, isFiltered: boolean = false): Promise<void> {
     const query = `
       INSERT INTO messages (
-        message_id, channel_id, author_id, author_name, content, 
+        message_id, channel_id, guild_id, author_id, author_name, content, 
         timestamp, reply_to_message_id, thread_id, is_filtered, raw_data
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (message_id) DO NOTHING
     `;
 
@@ -67,6 +67,7 @@ export class Database {
       await this.pool.query(query, [
         message.messageId,
         message.channelId,
+        message.guildId,
         message.authorId,
         message.authorName,
         message.content,
@@ -114,6 +115,7 @@ export class Database {
       return result.rows.map(row => ({
         messageId: row.message_id,
         channelId: row.channel_id,
+        guildId: row.guild_id,
         authorId: row.author_id,
         authorName: row.author_name,
         content: row.content,
@@ -142,6 +144,7 @@ export class Database {
       return result.rows.map(row => ({
         messageId: row.message_id,
         channelId: row.channel_id,
+        guildId: row.guild_id,
         authorId: row.author_id,
         authorName: row.author_name,
         content: row.content,

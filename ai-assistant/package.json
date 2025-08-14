@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
-    "dev": "bun --watch src/index.ts"
+    "dev": "bun --watch src/index.ts",
+    "test-webhook": "bun run src/discord/test-webhook.ts"
   },
   "dependencies": {
     "@types/pg": "^8.15.5",

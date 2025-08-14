@@ -5,6 +5,16 @@ async function main() {
   
   const poller = new MessagePoller();
 
+  // Test webhook connection on startup
+  console.log('🔗 Testing Discord webhook connection...');
+  const webhookWorking = await poller.testWebhook();
+  if (webhookWorking) {
+    console.log('✅ Discord webhook connection successful');
+  } else {
+    console.log('❌ Discord webhook connection failed - check DISCORD_WEBHOOK_URL');
+    console.log('⚠️  AI Assistant will continue but won\'t send notifications');
+  }
+
   // Handle graceful shutdown
   process.on('SIGINT', async () => {
     console.log('\n📋 Shutting down gracefully...');
@@ -19,6 +29,7 @@ async function main() {
   });
 
   // Start the message polling (this will run continuously)
+  console.log('🚀 Starting message polling...');
   await poller.start();
 }
 
