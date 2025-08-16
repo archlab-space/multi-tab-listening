@@ -26,6 +26,10 @@ async function main() {
     // Create and start monitor
     console.log('🌐 Starting Discord monitor...')
     const monitor = new DiscordMonitor(config)
+    
+    // Import and start status reporter
+    const { StatusReporter } = await import('./status-reporter.js')
+    const statusReporter = new StatusReporter(monitor, process.env.DISCORD_WEBHOOK_URL)
 
     // Handle graceful shutdown
     const shutdown = async (signal: string) => {
@@ -40,6 +44,10 @@ async function main() {
         }
       }
 
+      // Stop status reporter
+      statusReporter.stop()
+      console.log('✅ Status reporter stopped')
+      
       await monitor.stop()
       console.log('✅ Discord monitor stopped')
       process.exit(0)
@@ -50,9 +58,13 @@ async function main() {
 
     // Start monitoring
     await monitor.start()
+    
+    // Start status reporting
+    statusReporter.start()
 
     console.log('✅ Discord monitor is now running...')
-    console.log('📝 Logs are being written to discord-monitor.log')
+    console.log('📊 Status reporter is active (daily reports at 9 AM, health checks every 5 minutes)')
+    console.log('📝 Logs are being written to discord-monitor.log and daily-status-report.log')
     console.log('⏹️  Press Ctrl+C to stop')
 
     // Keep the process alive

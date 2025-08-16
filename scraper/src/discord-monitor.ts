@@ -4,7 +4,13 @@ import path from 'path'
 import winston from 'winston'
 import { Database } from './database.js'
 import { MessageFilter } from './message-filter.js'
-import { DiscordMessage, Channel, Config, ChannelInfo } from './types.js'
+import {
+  DiscordMessage,
+  Channel,
+  Config,
+  ChannelInfo,
+  ChannelHealthStatus,
+} from './types.js'
 
 export class DiscordMonitor {
   private browser: Browser | null = null
@@ -12,9 +18,10 @@ export class DiscordMonitor {
   private pages: Map<string, Page> = new Map()
   private database: Database
   private messageFilter: MessageFilter
-  private logger: winston.Logger
+  public logger: winston.Logger
   private config: Config
   private observerScript: string
+  private channelStatus: Map<string, ChannelHealthStatus> = new Map()
 
   constructor(config: Config) {
     this.config = config
@@ -127,6 +134,11 @@ export class DiscordMonitor {
         },
       )
 
+      // Handle heartbeat from the injected script
+      await page.exposeFunction('handleHeartbeat', async (status: any) => {
+        await this.handleChannelHeartbeat(channel.channelId, status)
+      })
+
       // Navigate to Discord channel
       const discordUrl = `https://discord.com/channels/${channel.guildId}/${channel.channelId}`
       await page.goto(discordUrl, { waitUntil: 'domcontentloaded' })
@@ -149,12 +161,32 @@ export class DiscordMonitor {
       }
 
       await this.database.insertChannel(channelInfo)
+
+      // Initialize channel status
+      this.channelStatus.set(channel.channelId, {
+        channelId: channel.channelId,
+        lastMessageTime: Date.now(),
+        lastHeartbeat: Date.now(),
+        messageCount: 0,
+        isObserving: true,
+        timeSinceLastMessage: 0,
+        processedMessagesCount: 0,
+        url: `https://discord.com/channels/${channel.guildId}/${channel.channelId}`,
+        errorCount: 0,
+      })
     } catch (error) {
       this.logger.error(
         `Failed to create tab for channel ${channel.channelId}:`,
         error,
       )
       this.pages.delete(channel.channelId)
+
+      // Mark channel as unhealthy
+      const status = this.channelStatus.get(channel.channelId)
+      if (status) {
+        status.lastErrorTime = Date.now()
+        status.errorCount++
+      }
     }
   }
 
@@ -162,23 +194,24 @@ export class DiscordMonitor {
     try {
       return await page.evaluate(() => {
         // Try to find the selected channel in the sidebar first
-        const selectedChannelElement = 
+        const selectedChannelElement =
           document.querySelector('li[class*="selected_"][data-dnd-name]') ||
           document.querySelector('li.selected[data-dnd-name]') ||
           // Fallback to any channel with data-dnd-name in the current view
           document.querySelector('[data-dnd-name]')
-        
+
         if (selectedChannelElement) {
-          const channelName = selectedChannelElement.getAttribute('data-dnd-name')
+          const channelName =
+            selectedChannelElement.getAttribute('data-dnd-name')
           if (channelName) return channelName
         }
-        
+
         // Fallback to other selectors for channel name in header/title areas
         const nameElement =
           document.querySelector('h1[class*="title"]') ||
           document.querySelector('.channel-name') ||
           document.querySelector('[aria-label*="channel"]')
-        
+
         return nameElement?.textContent?.trim()
       })
     } catch {
@@ -311,5 +344,70 @@ export class DiscordMonitor {
     await this.database.close()
 
     this.logger.info('Discord monitor stopped')
+  }
+
+  private async handleChannelHeartbeat(
+    channelId: string,
+    status: any,
+  ): Promise<void> {
+    const channelStatus = this.channelStatus.get(channelId)
+    if (!channelStatus) return
+
+    // Update status with heartbeat data
+    channelStatus.lastHeartbeat = status.lastHeartbeat
+    channelStatus.lastMessageTime = status.lastMessageTime
+    channelStatus.messageCount = status.messageCount
+    channelStatus.isObserving = status.isObserving
+    channelStatus.timeSinceLastMessage = status.timeSinceLastMessage
+    channelStatus.processedMessagesCount = status.processedMessagesCount
+    channelStatus.url = status.url
+
+    // Determine if channel is healthy
+    const now = Date.now()
+    const timeSinceHeartbeat = now - status.lastHeartbeat
+    const timeSinceMessage = status.timeSinceLastMessage
+
+    this.logger.debug(`Heartbeat for channel ${channelId}`, {
+      messageCount: status.messageCount,
+      timeSinceLastMessage: Math.round(timeSinceMessage / 1000),
+    })
+  }
+
+  public getChannelStatus(): ChannelHealthStatus[] {
+    return Array.from(this.channelStatus.values())
+  }
+
+  public async restartChannel(channelId: string): Promise<void> {
+    this.logger.info(`Restarting channel ${channelId}`)
+
+    const page = this.pages.get(channelId)
+    if (page) {
+      try {
+        // Try to restart the observer
+        await page.evaluate(() => {
+          if ((window as any).discordObserver) {
+            ;(window as any).discordObserver.stop()
+            setTimeout(() => (window as any).discordObserver.start(), 1000)
+          }
+        })
+
+        // Reset status
+        const status = this.channelStatus.get(channelId)
+        if (status) {
+          status.lastHeartbeat = Date.now()
+          status.errorCount = 0
+        }
+
+        this.logger.info(`Channel ${channelId} restarted successfully`)
+      } catch (error) {
+        this.logger.error(`Failed to restart channel ${channelId}:`, error)
+
+        const status = this.channelStatus.get(channelId)
+        if (status) {
+          status.lastErrorTime = Date.now()
+          status.errorCount++
+        }
+      }
+    }
   }
 }

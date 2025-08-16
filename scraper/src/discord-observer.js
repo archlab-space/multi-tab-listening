@@ -6,6 +6,9 @@
 
   let observer
   let processedMessages = new Set()
+  let lastMessageTime = Date.now()
+  let lastHeartbeat = Date.now()
+  let messageCount = 0
 
   function extractMessageData(messageElement) {
     try {
@@ -146,6 +149,15 @@
     }
 
     processedMessages.add(messageData.messageId)
+    lastMessageTime = Date.now()
+    messageCount++
+
+    // Clean up old processed messages to prevent memory leaks
+    if (processedMessages.size > 1000) {
+      const messagesToKeep = Array.from(processedMessages).slice(-500)
+      processedMessages.clear()
+      messagesToKeep.forEach((id) => processedMessages.add(id))
+    }
 
     // Send message to main process via exposed function
     if (typeof window.handleDiscordMessage === 'function') {
@@ -242,12 +254,46 @@
     startObserving()
   }
 
+  // Heartbeat function to report status
+  function sendHeartbeat() {
+    const now = Date.now()
+    const status = {
+      isObserving: observer !== null,
+      lastMessageTime,
+      lastHeartbeat: now,
+      messageCount,
+      timeSinceLastMessage: now - lastMessageTime,
+      processedMessagesCount: processedMessages.size,
+      url: window.location.href,
+      channelId: window.location.pathname.split('/').pop(),
+    }
+
+    lastHeartbeat = now
+
+    // Send heartbeat to main process
+    if (typeof window.handleHeartbeat === 'function') {
+      window.handleHeartbeat(status)
+    }
+  }
+
+  // Send heartbeat every 2 minutes
+  setInterval(sendHeartbeat, 120000)
+
   // Expose controls to the window object for debugging
   window.discordObserver = {
     start: startObserving,
     stop: stopObserving,
     processedCount: () => processedMessages.size,
     clear: () => processedMessages.clear(),
+    getStatus: () => ({
+      isObserving: observer !== null,
+      lastMessageTime,
+      lastHeartbeat,
+      messageCount,
+      processedMessagesCount: processedMessages.size,
+      timeSinceLastMessage: Date.now() - lastMessageTime,
+    }),
+    sendHeartbeat,
   }
 
   // Handle page navigation (Discord is a SPA)
