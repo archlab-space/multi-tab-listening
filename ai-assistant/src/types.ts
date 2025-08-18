@@ -1,7 +1,9 @@
 export interface DiscordMessage {
   messageId: string
   channelId: string
+  channelName: string | undefined
   guildId: string
+  guildName: string | undefined
   authorId: string
   authorName: string
   content: string

@@ -89,15 +89,15 @@ export class StatusReporter {
       }
 
       // If there are unhealthy channels, try to restart them
-      if (unhealthyChannels.length > 0) {
-        console.warn(
-          `Found ${unhealthyChannels.length} unhealthy channels, attempting restart...`,
-        )
-        for (const channel of unhealthyChannels) {
-          await this.monitor.restartChannel(channel.channelId)
-          await new Promise((resolve) => setTimeout(resolve, 2000)) // Wait between restarts
-        }
-      }
+      // if (unhealthyChannels.length > 0) {
+      //   console.warn(
+      //     `Found ${unhealthyChannels.length} unhealthy channels, attempting restart...`,
+      //   )
+      //   for (const channel of unhealthyChannels) {
+      //     await this.monitor.restartChannel(channel.channelId)
+      //     await new Promise((resolve) => setTimeout(resolve, 2000)) // Wait between restarts
+      //   }
+      // }
     } catch (error) {
       console.error('Failed to generate daily report:', error)
     }
@@ -197,7 +197,10 @@ export class StatusReporter {
       fields.push({
         name: '🔥 Most Active Channels (24h)',
         value: activeChannels
-          .map((c) => `${c.channelId}: ${c.messageCount} messages`)
+          .map(
+            (c) =>
+              `${c.channelId}: c.guildName - c.channelName ${c.messageCount} messages`,
+          )
           .join('\n'),
         inline: true,
       })
@@ -211,7 +214,7 @@ export class StatusReporter {
           .slice(0, 10)
           .map((c) => {
             const timeSinceMessage = Math.round(c.timeSinceLastMessage / 60000)
-            return `${c.channelId}: ${timeSinceMessage}m ago`
+            return `${c.channelId}: c.guildName - c.channelName ${timeSinceMessage}m ago`
           })
           .join('\n'),
         inline: true,
@@ -254,7 +257,7 @@ export class StatusReporter {
       ) // minutes
 
       return {
-        name: `🚨 Channel ${channel.channelId}`,
+        name: `🚨 Channel ${channel.channelId} c.guildName - c.channelName`,
         value: `Last Message: ${timeSinceMessage}m ago\nLast Heartbeat: ${timeSinceHeartbeat}m ago\nObserver: ${
           channel.isObserving ? '✅' : '❌'
         }\nErrors: ${channel.errorCount}`,

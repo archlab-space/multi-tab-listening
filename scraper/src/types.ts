@@ -48,6 +48,9 @@ export interface Config {
 
 export interface ChannelHealthStatus {
   channelId: string
+  channelName: string | undefined
+  guildId: string
+  guildName: string | undefined
   lastMessageTime: number
   lastHeartbeat: number
   messageCount: number

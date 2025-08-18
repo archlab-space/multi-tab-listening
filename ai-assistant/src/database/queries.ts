@@ -30,30 +30,37 @@ export class DatabaseQueries {
   async getUnprocessedMessages(limit: number = 50): Promise<DiscordMessage[]> {
     const query = `
       SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data
-      FROM messages 
-      WHERE processed = FALSE 
-        AND content IS NOT NULL 
-        AND content != ''
-      ORDER BY timestamp ASC 
+        m.message_id, m.channel_id, m.guild_id, m.author_id, m.author_name, m.content, 
+        m.timestamp, m.reply_to_message_id, m.thread_id, m.raw_data,
+        c.channel_name, c.guild_name
+      FROM messages m
+      LEFT JOIN channels c ON m.channel_id = c.channel_id
+      WHERE m.processed = FALSE 
+        AND m.content IS NOT NULL 
+        AND m.content != ''
+      ORDER BY m.timestamp ASC 
       LIMIT $1
     `
 
     try {
       const result = await this.pool.query(query, [limit])
-      return result.rows.map((row) => ({
-        messageId: row.message_id,
-        channelId: row.channel_id,
-        guildId: row.guild_id,
-        authorId: row.author_id,
-        authorName: row.author_name,
-        content: row.content,
-        timestamp: row.timestamp,
-        replyToMessageId: row.reply_to_message_id,
-        threadId: row.thread_id,
-        rawData: row.raw_data,
-      }))
+      return result.rows.map(
+        (row) =>
+          ({
+            messageId: row.message_id,
+            channelId: row.channel_id,
+            channelName: row.channel_name,
+            guildId: row.guild_id,
+            guildName: row.guild_name,
+            authorId: row.author_id,
+            authorName: row.author_name,
+            content: row.content,
+            timestamp: row.timestamp,
+            replyToMessageId: row.reply_to_message_id,
+            threadId: row.thread_id,
+            rawData: row.raw_data,
+          } as DiscordMessage),
+      )
     } catch (error) {
       this.logger.error('Error fetching unprocessed messages:', error)
       throw error
@@ -428,7 +435,9 @@ export class DatabaseQueries {
   private mapRowToMessage = (row: any): DiscordMessage => ({
     messageId: row.message_id,
     channelId: row.channel_id,
+    channelName: undefined,
     guildId: row.guild_id,
+    guildName: undefined,
     authorId: row.author_id,
     authorName: row.author_name,
     content: row.content,

@@ -152,7 +152,7 @@ export class DiscordWebhookSender {
         },
       ],
       footer: {
-        text: `Channel ID: ${message.channelId} • Message ID: ${message.messageId}`,
+        text: `Channel name: ${message.channelName} • Guild name: ${message.guildName}`,
       },
       timestamp: new Date().toISOString(),
     }

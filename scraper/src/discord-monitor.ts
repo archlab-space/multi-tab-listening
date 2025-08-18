@@ -152,12 +152,14 @@ export class DiscordMonitor {
 
       this.logger.info(`Created tab for channel: ${channel.channelId}`)
 
+      const channelName = await this.extractChannelName(page)
+      const guildName = await this.extractGuildName(page)
       // Store channel info
       const channelInfo: Channel = {
         channelId: channel.channelId,
-        channelName: await this.extractChannelName(page),
+        channelName,
         guildId: channel.guildId,
-        guildName: await this.extractGuildName(page),
+        guildName,
       }
 
       await this.database.insertChannel(channelInfo)
@@ -165,6 +167,9 @@ export class DiscordMonitor {
       // Initialize channel status
       this.channelStatus.set(channel.channelId, {
         channelId: channel.channelId,
+        channelName: channelName,
+        guildId: channel.guildId,
+        guildName: guildName,
         lastMessageTime: Date.now(),
         lastHeartbeat: Date.now(),
         messageCount: 0,
@@ -367,10 +372,13 @@ export class DiscordMonitor {
     const timeSinceHeartbeat = now - status.lastHeartbeat
     const timeSinceMessage = status.timeSinceLastMessage
 
-    this.logger.debug(`Heartbeat for channel ${channelId}`, {
-      messageCount: status.messageCount,
-      timeSinceLastMessage: Math.round(timeSinceMessage / 1000),
-    })
+    this.logger.info(
+      `Heartbeat for guild ${channelStatus.guildName} channel ${channelStatus.channelName}`,
+      {
+        messageCount: status.messageCount,
+        timeSinceLastMessage: Math.round(timeSinceMessage / 1000),
+      },
+    )
   }
 
   public getChannelStatus(): ChannelHealthStatus[] {
