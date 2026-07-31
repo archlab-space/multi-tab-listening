@@ -1,0 +1,9 @@
+packages:
+  - scraper
+  - ai-assistant
+
+# Shared across both packages — bump here, not in each package.json.
+catalog:
+  pg: ^8.22.0
+  winston: ^3.19.0
+  '@types/pg': ^8.20.0

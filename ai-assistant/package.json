@@ -1,5 +1,5 @@
 {
-  "name": "discord-ai-assistant",
+  "name": "ai-assistant",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
@@ -9,9 +9,9 @@
     "test-webhook": "bun run src/discord/test-webhook.ts"
   },
   "dependencies": {
-    "@types/pg": "^8.15.5",
-    "pg": "^8.16.3",
-    "winston": "^3.17.0"
+    "@types/pg": "catalog:",
+    "pg": "catalog:",
+    "winston": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "latest"
