@@ -27,7 +27,9 @@ async function testWebhook() {
       message: {
         messageId: '1405242049594396693',
         guildId: '1287736665103798433',
+        guildName: 'Test Guild',
         channelId: '1389296411253670141',
+        channelName: 'test-channel',
         authorId: 'test-user-789',
         authorName: 'TestUser',
         content: 'How do I configure webpack for React development?',

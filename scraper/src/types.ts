@@ -1,15 +1,6 @@
-export interface DiscordMessage {
-  messageId: string
-  channelId: string
-  guildId: string
-  authorId: string
-  authorName: string
-  content: string
-  timestamp: Date
-  replyToMessageId?: string
-  threadId?: string
-  rawData: any
-}
+// The scraper writes plain `messages` rows; channel/guild names go to the
+// `channels` table via the Channel type below.
+export type { DiscordMessage } from 'shared'
 
 export interface Channel {
   channelId: string

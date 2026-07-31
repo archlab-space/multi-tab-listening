@@ -1,17 +1,6 @@
-export interface DiscordMessage {
-  messageId: string
-  channelId: string
-  channelName: string | undefined
-  guildId: string
-  guildName: string | undefined
-  authorId: string
-  authorName: string
-  content: string
-  timestamp: Date
-  replyToMessageId?: string
-  threadId?: string
-  rawData: any
-}
+// Every message this service handles comes from a query that joins `channels`
+// (see database/queries.ts), so its DiscordMessage is the enriched view.
+export type { DiscordMessageWithChannel as DiscordMessage } from 'shared'
 
 export interface AIConfig {
   database: {

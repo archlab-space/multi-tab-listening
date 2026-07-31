@@ -18,6 +18,7 @@
     "node-cron": "^4.6.0",
     "pg": "catalog:",
     "playwright": "^1.62.1",
+    "shared": "workspace:*",
     "winston": "catalog:"
   },
   "devDependencies": {

@@ -102,6 +102,8 @@ The scraper will open a Chromium window. Log in to Discord manually on the first
 
 ```
 multi-tab-listening/
+├── shared/                     # Types shared by both services (mirrors the DB schema)
+│   └── src/types.ts
 ├── scraper/                    # Playwright-based Discord monitor
 │   ├── src/
 │   │   ├── discord-monitor.ts  # Tab management and message pipeline
@@ -123,6 +125,7 @@ multi-tab-listening/
 │   │   │   └── message-poller.ts     # Polling loop
 │   │   └── config.ts
 │   └── .env.example
+├── pnpm-workspace.yaml         # Workspace members + shared dependency catalog
 └── docker-compose.yml          # PostgreSQL + pgvector
 ```
 
