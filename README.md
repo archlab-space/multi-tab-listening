@@ -51,18 +51,17 @@ cp ai-assistant/.env.example ai-assistant/.env
 # 3. Start PostgreSQL
 docker-compose up -d
 
-# 4. Install dependencies and initialise the database schema
-cd scraper
+# 4. Install dependencies for both packages (pnpm workspace, run from the repo root)
 pnpm install
-pnpm run setup-db
 
-# 5. Start the scraper (keeps running, one tab per channel)
-pnpm start
+# 5. Initialise the database schema
+pnpm --filter scraper run setup-db
 
-# 6. In a new terminal, start the AI assistant
-cd ../ai-assistant
-bun install
-bun start
+# 6. Start the scraper (keeps running, one tab per channel)
+pnpm --filter scraper start
+
+# 7. In a new terminal, start the AI assistant
+pnpm --filter ai-assistant start
 ```
 
 The scraper will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
@@ -103,6 +102,8 @@ The scraper will open a Chromium window. Log in to Discord manually on the first
 
 ```
 multi-tab-listening/
+├── shared/                     # Types shared by both services (mirrors the DB schema)
+│   └── src/types.ts
 ├── scraper/                    # Playwright-based Discord monitor
 │   ├── src/
 │   │   ├── discord-monitor.ts  # Tab management and message pipeline
@@ -116,14 +117,14 @@ multi-tab-listening/
 │   ├── src/
 │   │   ├── ai/
 │   │   │   ├── fireworks-client.ts   # Fireworks AI API wrapper
-│   │   │   ├── message-analyzer.ts   # Question detection logic
-│   │   │   └── context-builder.ts    # History retrieval for AI context
+│   │   │   └── message-analyzer.ts   # Question detection logic
 │   │   ├── discord/
 │   │   │   └── webhook-sender.ts     # Rich embed notifications
 │   │   ├── scheduler/
 │   │   │   └── message-poller.ts     # Polling loop
 │   │   └── config.ts
 │   └── .env.example
+├── pnpm-workspace.yaml         # Workspace members + shared dependency catalog
 └── docker-compose.yml          # PostgreSQL + pgvector
 ```
 
