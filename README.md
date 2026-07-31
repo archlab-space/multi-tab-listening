@@ -117,8 +117,7 @@ multi-tab-listening/
 │   ├── src/
 │   │   ├── ai/
 │   │   │   ├── fireworks-client.ts   # Fireworks AI API wrapper
-│   │   │   ├── message-analyzer.ts   # Question detection logic
-│   │   │   └── context-builder.ts    # History retrieval for AI context
+│   │   │   └── message-analyzer.ts   # Question detection logic
 │   │   ├── discord/
 │   │   │   └── webhook-sender.ts     # Rich embed notifications
 │   │   ├── scheduler/
