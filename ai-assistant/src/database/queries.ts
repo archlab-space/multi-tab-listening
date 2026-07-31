@@ -1,6 +1,6 @@
 import { Pool } from 'pg'
 import winston from 'winston'
-import type { DiscordMessage } from '../types.js'
+import type { DiscordMessage, DiscordMessageRow } from '../types.js'
 import { config } from '../config.js'
 
 export class DatabaseQueries {
@@ -130,7 +130,7 @@ export class DatabaseQueries {
   async getQuestionMessages(
     channelId?: string,
     limit: number = 50,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     let query = `
       SELECT 
         message_id, channel_id, guild_id, author_id, author_name, content, 
@@ -167,13 +167,13 @@ export class DatabaseQueries {
     channelId: string,
     questionContent: string,
     targetMessage?: DiscordMessage,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     // Extract keywords from the question for relevance scoring
     const keywords = this.extractKeywords(questionContent)
 
     try {
       // Strategy 1: Get thread context if the question is part of a thread
-      let threadMessages: DiscordMessage[] = []
+      let threadMessages: DiscordMessageRow[] = []
       if (targetMessage?.threadId || targetMessage?.replyToMessageId) {
         threadMessages = await this.getThreadContextMessages(
           channelId,
@@ -214,7 +214,7 @@ export class DatabaseQueries {
   private async getThreadContextMessages(
     channelId: string,
     targetMessage: DiscordMessage,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     const query = `
       SELECT 
         message_id, channel_id, guild_id, author_id, author_name, content, 
@@ -245,7 +245,7 @@ export class DatabaseQueries {
     channelId: string,
     keywords: string[],
     limit: number,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     if (keywords.length === 0) {
       return this.getRecentMessages(channelId, limit)
     }
@@ -288,7 +288,7 @@ export class DatabaseQueries {
     channelId: string,
     keywords: string[],
     limit: number,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     if (keywords.length === 0) {
       return this.getRecentMessages(channelId, limit)
     }
@@ -325,7 +325,7 @@ export class DatabaseQueries {
   private async getRecentMessages(
     channelId: string,
     limit: number,
-  ): Promise<DiscordMessage[]> {
+  ): Promise<DiscordMessageRow[]> {
     const query = `
       SELECT 
         message_id, channel_id, guild_id, author_id, author_name, content, 
@@ -345,12 +345,12 @@ export class DatabaseQueries {
   }
 
   private combineAndRankMessages(
-    threadMessages: DiscordMessage[],
-    keywordMessages: DiscordMessage[],
+    threadMessages: DiscordMessageRow[],
+    keywordMessages: DiscordMessageRow[],
     keywords: string[],
     limit: number,
-  ): DiscordMessage[] {
-    const messageMap = new Map<string, DiscordMessage & { score: number }>()
+  ): DiscordMessageRow[] {
+    const messageMap = new Map<string, DiscordMessageRow & { score: number }>()
 
     // Add thread messages with highest priority (score: 100)
     threadMessages.forEach((msg) => {
@@ -432,12 +432,10 @@ export class DatabaseQueries {
     return Math.min(score, 50) // Cap at 50 points
   }
 
-  private mapRowToMessage = (row: any): DiscordMessage => ({
+  private mapRowToMessage = (row: any): DiscordMessageRow => ({
     messageId: row.message_id,
     channelId: row.channel_id,
-    channelName: undefined,
     guildId: row.guild_id,
-    guildName: undefined,
     authorId: row.author_id,
     authorName: row.author_name,
     content: row.content,

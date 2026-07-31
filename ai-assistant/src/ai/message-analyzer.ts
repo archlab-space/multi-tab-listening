@@ -1,7 +1,7 @@
 import winston from 'winston'
 import { FireworksClient } from './fireworks-client.js'
 import { DatabaseQueries } from '../database/queries.js'
-import type { DiscordMessage } from '../types.js'
+import type { DiscordMessage, DiscordMessageRow } from '../types.js'
 
 export interface QuestionAnalysis {
   message: DiscordMessage
@@ -10,7 +10,9 @@ export interface QuestionAnalysis {
   confidence: number
   extractedQuestion?: string
   suggestedAnswer?: string
-  contextMessages?: DiscordMessage[]
+  // Context comes from queries that don't join `channels`, so these carry no
+  // channel or guild name — only the analysed message itself does.
+  contextMessages?: DiscordMessageRow[]
 }
 
 export class MessageAnalyzer {
