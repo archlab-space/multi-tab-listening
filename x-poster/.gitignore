@@ -14,3 +14,6 @@ chrome-profile-*/
 
 # Dry-run output
 screenshots/
+
+# Throwaway scripts used for the manual acceptance steps
+scratch-*.ts
