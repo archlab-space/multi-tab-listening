@@ -62,7 +62,7 @@ export const setupDatabase = async () => {
         thread_id VARCHAR(255) UNIQUE NOT NULL,
         original_message_id VARCHAR(255) NOT NULL,
         channel_id VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
@@ -88,7 +88,11 @@ export const setupDatabase = async () => {
 
     console.log('Database schema created successfully')
   } catch (err) {
+    // Rethrow: a schema failure that only logs means every statement after it
+    // is skipped silently, which is exactly how the trailing comma above went
+    // unnoticed while none of the indexes below it were ever created.
     console.error('Error setting up database:', err)
+    throw err
   } finally {
     await client.end()
   }

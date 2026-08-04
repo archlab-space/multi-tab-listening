@@ -21,7 +21,7 @@ Copied verbatim from `docs/superpowers/specs/2026-08-04-x-auto-poster-design.md`
 - **New time columns use `TIMESTAMPTZ`**, deviating from the existing tables' `TIMESTAMP`, because they all participate in scheduling decisions.
 - **macOS only.** `pbcopy`/`pbpaste` are macOS commands.
 
-**Local Postgres** (from `docker-compose.yml`): host `localhost`, port `5432`, db `discord_monitor`, user `discord_user`, password `defaultpassword123`. Start it with `docker-compose up -d` from the repo root.
+**Local Postgres** (from `docker-compose.yml`): host `localhost`, port `5432`, db `discord_monitor`, user `discord_user`, password `defaultpassword123`. Start it with `docker compose up -d` from the repo root.
 
 **Branch:** all work lands on `feat/x-auto-poster`, already created.
 
@@ -44,7 +44,7 @@ Start Postgres and run the existing setup to see the swallowed error:
 
 ```bash
 cd /Users/hanlynn/Projects/my/multi-tab-listening
-docker-compose up -d
+docker compose up -d
 sleep 5
 pnpm --filter scraper run setup-db
 ```
@@ -472,7 +472,7 @@ export function createPool(config: DbConfig = loadDbConfig()): Pool {
 Postgres must be running.
 
 ```bash
-docker-compose up -d
+docker compose up -d
 pnpm --filter shared test
 ```
 
@@ -2383,7 +2383,7 @@ describe('history', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-docker-compose up -d
+docker compose up -d
 pnpm --filter x-poster test
 ```
 
@@ -3638,7 +3638,7 @@ Start the monitor and confirm it captures messages **before** changing anything,
 
 ```bash
 cd /Users/hanlynn/Projects/my/multi-tab-listening
-docker-compose up -d
+docker compose up -d
 pnpm --filter scraper start
 ```
 
