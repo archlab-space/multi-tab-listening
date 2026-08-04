@@ -1,0 +1,16 @@
+# dependencies (installed from the workspace root via pnpm)
+node_modules
+dist
+
+# winston writes real files, including from tests
+*.log
+
+# dotenv environment variable files
+.env
+
+# The dedicated Chrome profile holds a live X session. Never commit it.
+chrome-profile/
+chrome-profile-*/
+
+# Dry-run output
+screenshots/
