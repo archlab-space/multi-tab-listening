@@ -22,9 +22,9 @@ describe('loadDbConfig', () => {
 
   it('applies the same defaults the services used before', () => {
     expect(loadDbConfig({} as NodeJS.ProcessEnv)).toEqual({
-      user: 'postgres',
+      user: 'app_user',
       host: 'localhost',
-      database: 'discord_monitor',
+      database: 'multi_tab_listening',
       password: '',
       port: 5432,
     })
@@ -66,9 +66,9 @@ describe('createPool', () => {
 
   it('builds a pool from the given config', async () => {
     const pool = createPool({
-      user: 'discord_user',
+      user: 'app_user',
       host: 'localhost',
-      database: 'discord_monitor',
+      database: 'multi_tab_listening',
       password: 'defaultpassword123',
       port: 5432,
     })

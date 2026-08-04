@@ -88,7 +88,7 @@ The Discord monitor will open a Chromium window. Log in to Discord manually on t
 | `DB_PORT` | PostgreSQL port | `5432` |
 | `DB_USER` | PostgreSQL user | required |
 | `DB_PASSWORD` | PostgreSQL password | required |
-| `DB_NAME` | PostgreSQL database name | `discord_monitor` |
+| `DB_NAME` | PostgreSQL database name | `multi_tab_listening` |
 | `STORAGE_STATE_PATH` | Path to Playwright session file | `./discord-session.json` |
 | `ENABLE_FILTERING` | Enable message noise filtering | `true` |
 | `MIN_MESSAGE_LENGTH` | Minimum character count to store a message | `30` |

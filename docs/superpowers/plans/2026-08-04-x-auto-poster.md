@@ -8,12 +8,17 @@
 
 **Tech Stack:** TypeScript (nodenext), Node 24, pnpm workspace, Playwright, `pg`, winston, vitest, real Chrome over CDP.
 
-> **Note added after this document was written:** the `scraper` package was
-> renamed to `discord-monitor`, aligning it with the `DiscordMonitor` class,
-> `discord-monitor.log`, and the `discord_monitor` database that already used
-> that name. Paths below still say `scraper/` — they were accurate on the date
-> above, and this document is a record of the work rather than live
-> instructions.
+> **Note added after this document was written.** Two renames landed after the
+> work described here, so the names below are historical. This document is a
+> record of what was done, not live instructions — do not copy its commands.
+>
+> - The `scraper` package became `discord-monitor`, aligning it with the
+>   `DiscordMonitor` class and `discord-monitor.log`, which already used that
+>   name. Paths below still say `scraper/`.
+> - The database `discord_monitor` became `multi_tab_listening`, the role
+>   `discord_user` became `app_user`, and the container `discord-postgres`
+>   became `multi-tab-postgres` — the database serves the whole workspace
+>   (`messages` and `tweets`), so naming it after one service misled.
 
 ## Global Constraints
 

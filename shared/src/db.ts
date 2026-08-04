@@ -22,9 +22,13 @@ function parsePort(raw: string | undefined): number {
 
 export function loadDbConfig(env: NodeJS.ProcessEnv = process.env): DbConfig {
   return {
-    user: env.DB_USER ?? 'postgres',
+    // Matches the user docker-compose.yml creates. The previous default of
+    // 'postgres' is a role that does not exist in that container, so omitting
+    // DB_USER failed with a confusing "role does not exist" rather than
+    // working out of the box.
+    user: env.DB_USER ?? 'app_user',
     host: env.DB_HOST ?? 'localhost',
-    database: env.DB_NAME ?? 'discord_monitor',
+    database: env.DB_NAME ?? 'multi_tab_listening',
     password: env.DB_PASSWORD ?? '',
     port: parsePort(env.DB_PORT),
   }

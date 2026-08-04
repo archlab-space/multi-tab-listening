@@ -3,9 +3,9 @@ import { createPool } from 'shared/db'
 import { TweetQueue } from './tweet-queue.js'
 
 const pool = createPool({
-  user: 'discord_user',
+  user: 'app_user',
   host: 'localhost',
-  database: 'discord_monitor',
+  database: 'multi_tab_listening',
   password: 'defaultpassword123',
   port: 5432,
 })
