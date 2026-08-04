@@ -1,4 +1,4 @@
-// The scraper writes plain `messages` rows; channel/guild names go to the
+// The Discord monitor writes plain `messages` rows; channel/guild names go to the
 // `channels` table via the Channel type below.
 export type { DiscordMessage } from 'shared'
 

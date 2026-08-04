@@ -1,6 +1,6 @@
 packages:
   - shared
-  - scraper
+  - discord-monitor
   - ai-assistant
   - x-poster
 

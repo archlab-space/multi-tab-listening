@@ -3,6 +3,13 @@
 - **Date:** 2026-08-04
 - **Status:** Approved, ready for implementation planning
 
+> **Note added after this document was written:** the `scraper` package was
+> renamed to `discord-monitor`, aligning it with the `DiscordMonitor` class,
+> `discord-monitor.log`, and the `discord_monitor` database that already used
+> that name. Paths below still say `scraper/` — they were accurate on the date
+> above, and this document is a record of the work rather than live
+> instructions.
+
 ## Goal
 
 Add automated posting to X (Twitter) as a third service in the workspace. It

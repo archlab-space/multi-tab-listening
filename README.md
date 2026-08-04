@@ -12,7 +12,7 @@ A browser-automation tool that monitors multiple Discord channels simultaneously
 
 This project has three independently running modules:
 
-- **Scraper** — opens one browser tab per Discord channel using Playwright, injects a `MutationObserver` script to capture new messages in real time, filters noise, and stores everything in PostgreSQL.
+- **Discord Monitor** — opens one browser tab per Discord channel using Playwright, injects a `MutationObserver` script to capture new messages in real time, filters noise, and stores everything in PostgreSQL.
 - **AI Assistant** — polls the database for unprocessed messages, calls the Fireworks AI API to detect whether each message is a question (≥70% confidence threshold), retrieves relevant context from message history, generates an answer, and pushes both to a Discord channel via Webhook.
 - **X Poster** — drains a queue of pending tweets from the database and posts each one through a real Chrome browser driven over CDP, pacing the interaction so it reads as human.
 
@@ -20,7 +20,7 @@ This project has three independently running modules:
 
 ```mermaid
 flowchart LR
-    A["Discord Browser Tabs\n(Playwright)"] -->|"new messages"| B["Scraper\n(filter + extract)"]
+    A["Discord Browser Tabs\n(Playwright)"] -->|"new messages"| B["Discord Monitor\n(filter + extract)"]
     B -->|store| C[("PostgreSQL\n+ pgvector")]
     C -->|poll| D["AI Assistant\n(Fireworks AI)"]
     D -->|"question detected"| E["Discord Webhook\n(Q&A notification)"]
@@ -48,7 +48,7 @@ git clone https://github.com/your-username/multi-tab-listening.git
 cd multi-tab-listening
 
 # 2. Configure environment variables
-cp scraper/.env.example scraper/.env
+cp discord-monitor/.env.example discord-monitor/.env
 cp ai-assistant/.env.example ai-assistant/.env
 # Edit both .env files with your values (see Configuration below)
 
@@ -59,10 +59,10 @@ docker compose up -d
 pnpm install
 
 # 5. Initialise the database schema
-pnpm --filter scraper run setup-db
+pnpm --filter discord-monitor run setup-db
 
-# 6. Start the scraper (keeps running, one tab per channel)
-pnpm --filter scraper start
+# 6. Start the Discord monitor (keeps running, one tab per channel)
+pnpm --filter discord-monitor start
 
 # 7. In a new terminal, start the AI assistant
 pnpm --filter ai-assistant start
@@ -75,11 +75,11 @@ cp x-poster/.env.example x-poster/.env
 pnpm --filter x-poster start
 ```
 
-The scraper will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
+The Discord monitor will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
 
 ## Configuration
 
-### Scraper (`scraper/.env`)
+### Discord Monitor (`discord-monitor/.env`)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -146,7 +146,7 @@ multi-tab-listening/
 │   ├── src/types.ts            # Mirrors the DB schema
 │   ├── src/logger.ts           # The one winston factory
 │   └── src/db.ts               # Postgres config loader + pool factory
-├── scraper/                    # Playwright-based Discord monitor
+├── discord-monitor/            # Playwright-based Discord monitor
 │   ├── src/
 │   │   ├── discord-monitor.ts  # Tab management and message pipeline
 │   │   ├── discord-observer.js # MutationObserver script injected into browser
