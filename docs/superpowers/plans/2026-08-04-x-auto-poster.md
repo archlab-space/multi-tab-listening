@@ -692,15 +692,15 @@ catalog:
 
 - [ ] **Step 3: Create `x-poster/tsconfig.json`**
 
-Mirrors `scraper/tsconfig.json`, minus the `DOM` lib — this package never runs code in the page.
+Mirrors `scraper/tsconfig.json` with two deliberate differences: no `DOM` lib, because this package never runs code in the page, and `ES2022` rather than `ES2020`, because `errors.ts` uses `Error(message, { cause })` — `Error.cause` is an ES2022 addition and `tsc` rejects it under `ES2020`. Node 24 supports ES2022 fully.
 
 ```json
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
