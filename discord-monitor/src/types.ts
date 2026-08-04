@@ -1,6 +1,8 @@
-// The scraper writes plain `messages` rows; channel/guild names go to the
+// The Discord monitor writes plain `messages` rows; channel/guild names go to the
 // `channels` table via the Channel type below.
 export type { DiscordMessage } from 'shared'
+
+import type { DbConfig } from 'shared/db'
 
 export interface Channel {
   channelId: string
@@ -23,13 +25,7 @@ export interface ChannelInfo {
 export interface Config {
   channels: ChannelInfo[]
   storageStatePath?: string
-  database: {
-    user: string
-    host: string
-    database: string
-    password: string
-    port: number
-  }
+  database: DbConfig
   filtering: {
     enabled: boolean
     trivialPhrases: string[]

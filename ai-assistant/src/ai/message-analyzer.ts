@@ -1,4 +1,5 @@
-import winston from 'winston'
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
 import { FireworksClient } from './fireworks-client.js'
 import { DatabaseQueries } from '../database/queries.js'
 import type { DiscordMessage, DiscordMessageRow } from '../types.js'
@@ -24,17 +25,7 @@ export class MessageAnalyzer {
     this.fireworks = new FireworksClient()
     this.db = new DatabaseQueries()
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json(),
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'message-analyzer.log' }),
-        new winston.transports.Console(),
-      ],
-    })
+    this.logger = createLogger('message-analyzer.log')
   }
 
   async analyzeMessages(

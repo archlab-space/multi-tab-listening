@@ -1,4 +1,5 @@
-import winston from 'winston'
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
 import { config } from '../config.js'
 import type { QuestionAnalysis } from '../ai/message-analyzer.js'
 
@@ -36,17 +37,7 @@ export class DiscordWebhookSender {
       throw new Error('DISCORD_WEBHOOK_URL is required')
     }
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json(),
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'discord-webhook.log' }),
-        new winston.transports.Console(),
-      ],
-    })
+    this.logger = createLogger('discord-webhook.log')
   }
 
   async sendQuestionAndAnswer(analysis: QuestionAnalysis): Promise<void> {

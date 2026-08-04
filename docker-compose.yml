@@ -3,21 +3,24 @@ version: '3.8'
 services:
   postgres:
     image: pgvector/pgvector:pg15
-    container_name: discord-postgres
+    container_name: multi-tab-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: discord_monitor
-      POSTGRES_USER: discord_user
+      POSTGRES_DB: multi_tab_listening
+      POSTGRES_USER: app_user
       POSTGRES_PASSWORD: ${DB_PASSWORD:-defaultpassword123}  # local dev default — set DB_PASSWORD env var in production
     ports:
-      - "5432:5432"
+      # Loopback only. Docker's default "5432:5432" binds 0.0.0.0, which put
+      # this database — with a password committed to a public repo — on the
+      # local network for anyone on the same WiFi.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - discord-network
+      - app-network
 
 networks:
-  discord-network:
+  app-network:
     driver: bridge
 
 volumes:

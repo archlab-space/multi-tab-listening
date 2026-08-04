@@ -8,14 +8,10 @@ export type { DiscordMessageWithChannel as DiscordMessage } from 'shared'
 // a name must come from a joined query instead.
 export type { DiscordMessage as DiscordMessageRow } from 'shared'
 
+import type { DbConfig } from 'shared/db'
+
 export interface AIConfig {
-  database: {
-    user: string
-    host: string
-    database: string
-    password: string
-    port: number
-  }
+  database: DbConfig
   fireworksApiKey: string
   discordWebhookUrl: string
   polling: {

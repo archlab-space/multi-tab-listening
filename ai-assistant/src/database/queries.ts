@@ -1,5 +1,7 @@
-import { Pool } from 'pg'
-import winston from 'winston'
+import type { Pool } from 'pg'
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
+import { createPool } from 'shared/db'
 import type { DiscordMessage, DiscordMessageRow } from '../types.js'
 import { config } from '../config.js'
 
@@ -8,23 +10,9 @@ export class DatabaseQueries {
   private logger: winston.Logger
 
   constructor() {
-    this.pool = new Pool({
-      ...config.database,
-      max: 10,
-      idleTimeoutMillis: 30000,
-    })
+    this.pool = createPool(config.database)
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json(),
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'ai-assistant.log' }),
-        new winston.transports.Console(),
-      ],
-    })
+    this.logger = createLogger('ai-assistant.log')
   }
 
   async getUnprocessedMessages(limit: number = 50): Promise<DiscordMessage[]> {

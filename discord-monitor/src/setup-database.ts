@@ -1,16 +1,11 @@
 import { Client } from 'pg'
 import dotenv from 'dotenv'
+import { loadDbConfig } from 'shared/db'
 
 dotenv.config()
 
 export const setupDatabase = async () => {
-  const client = new Client({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'discord_monitor',
-    password: process.env.DB_PASSWORD,
-    port: parseInt(process.env.DB_PORT || '5432'),
-  })
+  const client = new Client(loadDbConfig())
 
   try {
     await client.connect()
@@ -62,7 +57,29 @@ export const setupDatabase = async () => {
         thread_id VARCHAR(255) UNIQUE NOT NULL,
         original_message_id VARCHAR(255) NOT NULL,
         channel_id VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    // Create tweets table — the queue drained by the x-poster service.
+    // Time columns are TIMESTAMPTZ, unlike the tables above, because every
+    // one of them feeds a scheduling decision (active-hours window, minimum
+    // interval, daily cap) where a naive timestamp is a correctness bug.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tweets (
+        id SERIAL PRIMARY KEY,
+        content TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        dedupe_key VARCHAR(255) UNIQUE NOT NULL,
+        source VARCHAR(50),
+        source_ref VARCHAR(255),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        posted_at TIMESTAMPTZ,
+        posted_url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
 
@@ -78,6 +95,8 @@ export const setupDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp ON messages(channel_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_context_search ON messages(channel_id, is_question, timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_guild_id ON messages(guild_id);
+      CREATE INDEX IF NOT EXISTS idx_tweets_claim ON tweets(status, scheduled_at);
+      CREATE INDEX IF NOT EXISTS idx_tweets_posted_at ON tweets(posted_at);
     `)
 
     // Create full-text search index for content
@@ -88,7 +107,11 @@ export const setupDatabase = async () => {
 
     console.log('Database schema created successfully')
   } catch (err) {
+    // Rethrow: a schema failure that only logs means every statement after it
+    // is skipped silently, which is exactly how the trailing comma above went
+    // unnoticed while none of the indexes below it were ever created.
     console.error('Error setting up database:', err)
+    throw err
   } finally {
     await client.end()
   }

@@ -1,4 +1,5 @@
-import winston from 'winston';
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
 import { DatabaseQueries } from '../database/queries.js';
 import { MessageAnalyzer } from '../ai/message-analyzer.js';
 import { DiscordWebhookSender } from '../discord/webhook-sender.js';
@@ -20,17 +21,7 @@ export class MessagePoller {
     this.analyzer = new MessageAnalyzer();
     this.webhookSender = new DiscordWebhookSender();
     
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'message-poller.log' }),
-        new winston.transports.Console()
-      ],
-    });
+    this.logger = createLogger('message-poller.log')
   }
 
   async processNewMessages(): Promise<QuestionAnalysis[]> {
