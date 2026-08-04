@@ -31,3 +31,40 @@ export interface DiscordMessageWithChannel extends DiscordMessage {
   channelName: string | undefined
   guildName: string | undefined
 }
+
+/**
+ * Where a queued tweet is in its lifecycle.
+ *
+ * `uncertain` is not a flavour of failure. It means the submit button was
+ * clicked but the outcome could not be confirmed — the tweet may well be
+ * live. Rows in this state are never retried automatically, because the
+ * queue prefers a missed tweet over a duplicate one.
+ */
+export type TweetStatus =
+  | 'pending'
+  | 'sending'
+  | 'posted'
+  | 'failed'
+  | 'uncertain'
+
+/** One row of the `tweets` table. */
+export interface Tweet {
+  id: number
+  content: string
+  status: TweetStatus
+  /**
+   * Idempotency key supplied by whoever enqueued the tweet. UNIQUE, so
+   * enqueueing the same logical tweet twice is rejected by Postgres rather
+   * than by application logic.
+   */
+  dedupeKey: string
+  source: string | null
+  sourceRef: string | null
+  attempts: number
+  lastError: string | null
+  scheduledAt: Date
+  postedAt: Date | null
+  postedUrl: string | null
+  createdAt: Date
+  updatedAt: Date
+}
