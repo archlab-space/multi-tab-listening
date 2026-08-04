@@ -4,7 +4,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/types.ts"
+    ".": "./src/types.ts",
+    "./logger": "./src/logger.ts",
+    "./db": "./src/db.ts"
   },
-  "types": "./src/types.ts"
+  "types": "./src/types.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "catalog:",
+    "winston": "catalog:"
+  },
+  "devDependencies": {
+    "@types/pg": "catalog:",
+    "vitest": "catalog:"
+  }
 }

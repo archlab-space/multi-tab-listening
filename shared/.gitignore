@@ -1,0 +1,5 @@
+# dependencies (installed from the workspace root via pnpm)
+node_modules
+
+# winston writes real files, including from tests
+*.log
