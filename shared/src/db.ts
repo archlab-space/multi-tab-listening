@@ -1,4 +1,4 @@
-import { Pool } from 'pg'
+import { Pool, type PoolConfig } from 'pg'
 
 /** The Postgres connection shape every service in this workspace uses. */
 export interface DbConfig {
@@ -30,6 +30,18 @@ export function loadDbConfig(env: NodeJS.ProcessEnv = process.env): DbConfig {
   }
 }
 
-export function createPool(config: DbConfig = loadDbConfig()): Pool {
-  return new Pool(config)
+/**
+ * Pool tuning both services had arrived at independently, so it belongs here
+ * rather than being restated at each call site.
+ */
+const POOL_DEFAULTS = {
+  max: 10,
+  idleTimeoutMillis: 30_000,
+} satisfies PoolConfig
+
+export function createPool(
+  config: DbConfig = loadDbConfig(),
+  overrides: PoolConfig = {},
+): Pool {
+  return new Pool({ ...POOL_DEFAULTS, ...config, ...overrides })
 }

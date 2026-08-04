@@ -1,5 +1,7 @@
 import { Client, Pool } from 'pg';
-import winston from 'winston';
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
+import { createPool } from 'shared/db'
 import { DiscordMessage, Channel, Thread } from './types.js';
 
 export class Database {
@@ -7,27 +9,9 @@ export class Database {
   private logger: winston.Logger;
 
   constructor() {
-    this.pool = new Pool({
-      user: process.env.DB_USER || 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      database: process.env.DB_NAME || 'discord_monitor',
-      password: process.env.DB_PASSWORD,
-      port: parseInt(process.env.DB_PORT || '5432'),
-      max: 10,
-      idleTimeoutMillis: 30000,
-    });
+    this.pool = createPool();
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'database.log' }),
-        new winston.transports.Console()
-      ],
-    });
+    this.logger = createLogger('database.log')
   }
 
   async insertChannel(channel: Channel): Promise<void> {

@@ -1,4 +1,5 @@
-import winston from 'winston';
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
 import { config } from '../config.js';
 
 export interface FireworksMessage {
@@ -33,17 +34,7 @@ export class FireworksClient {
       throw new Error('FIREWORKS_API_KEY is required');
     }
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'fireworks-ai.log' }),
-        new winston.transports.Console()
-      ],
-    });
+    this.logger = createLogger('fireworks-ai.log')
   }
 
   async chat(

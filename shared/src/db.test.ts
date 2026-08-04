@@ -44,6 +44,26 @@ describe('loadDbConfig', () => {
 })
 
 describe('createPool', () => {
+  it('applies the pool tuning both services had settled on', () => {
+    const pool = createPool({
+      user: 'u',
+      host: 'h',
+      database: 'd',
+      password: 'p',
+      port: 5432,
+    })
+    expect(pool.options.max).toBe(10)
+    expect(pool.options.idleTimeoutMillis).toBe(30_000)
+  })
+
+  it('lets a caller override the tuning', () => {
+    const pool = createPool(
+      { user: 'u', host: 'h', database: 'd', password: 'p', port: 5432 },
+      { max: 3 },
+    )
+    expect(pool.options.max).toBe(3)
+  })
+
   it('builds a pool from the given config', async () => {
     const pool = createPool({
       user: 'discord_user',

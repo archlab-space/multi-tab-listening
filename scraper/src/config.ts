@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { loadDbConfig } from 'shared/db'
 import { Config, ChannelInfo } from './types.js'
 
 dotenv.config()
@@ -38,13 +39,7 @@ export function loadConfig(): Config {
   const config: Config = {
     channels,
     storageStatePath: process.env.STORAGE_STATE_PATH,
-    database: {
-      user: process.env.DB_USER || 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      database: process.env.DB_NAME || 'discord_monitor',
-      password: process.env.DB_PASSWORD || '',
-      port: parseInt(process.env.DB_PORT || '5432'),
-    },
+    database: loadDbConfig(),
     filtering: {
       enabled: process.env.ENABLE_FILTERING?.toLowerCase() === 'true' || true,
       trivialPhrases: parseTrivialPhrases(process.env.CUSTOM_TRIVIAL_PHRASES),

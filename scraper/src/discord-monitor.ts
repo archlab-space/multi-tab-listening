@@ -1,7 +1,8 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright'
 import { readFileSync } from 'fs'
 import path from 'path'
-import winston from 'winston'
+import type winston from 'winston'
+import { createLogger } from 'shared/logger'
 import { Database } from './database.js'
 import { MessageFilter } from './message-filter.js'
 import {
@@ -31,26 +32,7 @@ export class DiscordMonitor {
       config.filtering.minLength,
     )
 
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
-          return `${timestamp} [${level.toUpperCase()}]: ${message} ${
-            Object.keys(meta).length ? JSON.stringify(meta) : ''
-          }`
-        }),
-      ),
-      transports: [
-        new winston.transports.File({ filename: 'discord-monitor.log' }),
-        new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple(),
-          ),
-        }),
-      ],
-    })
+    this.logger = createLogger('discord-monitor.log')
 
     // Load the observer script
     this.observerScript = readFileSync(
@@ -69,12 +51,12 @@ export class DiscordMonitor {
         handleSIGINT: false, // Disable automatic browser close on Ctrl+C
         handleSIGTERM: false, // Disable automatic browser close on SIGTERM
         handleSIGHUP: false, // Disable automatic browser close on SIGHUP
-        args: [
-          '--no-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-        ],
+        // --no-sandbox, --disable-web-security and
+        // --disable-features=VizDisplayCompositor used to be here. All three
+        // are automation tells, and the second strips same-origin protection
+        // from a browser holding a live Discord session. Only the shared-memory
+        // workaround is kept, which changes no observable browser behaviour.
+        args: ['--disable-dev-shm-usage'],
       })
 
       // Create or restore context

@@ -144,12 +144,22 @@ describe('releaseForRetry', () => {
   })
 })
 
+/**
+ * history() reports on the whole table by design — that is what the rate
+ * limiter needs. So these assert deltas against a baseline rather than
+ * absolute counts: the alternative would be truncating a table that holds
+ * the operator's real queue.
+ */
 describe('history', () => {
-  it('reports nothing posted on a clean slate', async () => {
-    expect(await queue.history()).toEqual({ lastPostedAt: null, postedToday: 0 })
+  it('does not count a tweet that was never posted', async () => {
+    const before = await queue.history()
+    await queue.enqueue({ content: 'unposted', dedupeKey: 'test:h0' })
+    expect((await queue.history()).postedToday).toBe(before.postedToday)
   })
 
   it('counts today posts and reports the most recent', async () => {
+    const before = await queue.history()
+
     await queue.enqueue({ content: 'one', dedupeKey: 'test:h1' })
     await queue.enqueue({ content: 'two', dedupeKey: 'test:h2' })
 
@@ -158,15 +168,22 @@ describe('history', () => {
     const second = await queue.claimNext()
     await queue.markPosted(second!.id, null)
 
-    const history = await queue.history()
-    expect(history.postedToday).toBe(2)
-    expect(history.lastPostedAt).toBeInstanceOf(Date)
+    const after = await queue.history()
+    expect(after.postedToday).toBe(before.postedToday + 2)
+    expect(after.lastPostedAt).toBeInstanceOf(Date)
   })
 
   it('does not count failed or uncertain tweets as posted', async () => {
+    const before = await queue.history()
+
     await queue.enqueue({ content: 'nope', dedupeKey: 'test:h3' })
-    const claimed = await queue.claimNext()
-    await queue.markFailed(claimed!.id, 'nope')
-    expect((await queue.history()).postedToday).toBe(0)
+    const failed = await queue.claimNext()
+    await queue.markFailed(failed!.id, 'nope')
+
+    await queue.enqueue({ content: 'maybe', dedupeKey: 'test:h4' })
+    const unsure = await queue.claimNext()
+    await queue.markUncertain(unsure!.id, 'unverified')
+
+    expect((await queue.history()).postedToday).toBe(before.postedToday)
   })
 })

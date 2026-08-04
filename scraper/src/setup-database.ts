@@ -1,16 +1,11 @@
 import { Client } from 'pg'
 import dotenv from 'dotenv'
+import { loadDbConfig } from 'shared/db'
 
 dotenv.config()
 
 export const setupDatabase = async () => {
-  const client = new Client({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'discord_monitor',
-    password: process.env.DB_PASSWORD,
-    port: parseInt(process.env.DB_PORT || '5432'),
-  })
+  const client = new Client(loadDbConfig())
 
   try {
     await client.connect()

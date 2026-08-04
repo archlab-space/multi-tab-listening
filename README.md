@@ -10,10 +10,11 @@ A browser-automation tool that monitors multiple Discord channels simultaneously
 
 ## Overview
 
-This project has two independently running modules:
+This project has three independently running modules:
 
 - **Scraper** — opens one browser tab per Discord channel using Playwright, injects a `MutationObserver` script to capture new messages in real time, filters noise, and stores everything in PostgreSQL.
 - **AI Assistant** — polls the database for unprocessed messages, calls the Fireworks AI API to detect whether each message is a question (≥70% confidence threshold), retrieves relevant context from message history, generates an answer, and pushes both to a Discord channel via Webhook.
+- **X Poster** — drains a queue of pending tweets from the database and posts each one through a real Chrome browser driven over CDP, pacing the interaction so it reads as human.
 
 ## Architecture
 
@@ -23,6 +24,8 @@ flowchart LR
     B -->|store| C[("PostgreSQL\n+ pgvector")]
     C -->|poll| D["AI Assistant\n(Fireworks AI)"]
     D -->|"question detected"| E["Discord Webhook\n(Q&A notification)"]
+    C -->|"claim pending tweet"| F["X Poster\n(real Chrome via CDP)"]
+    F -->|post| G["x.com"]
 ```
 
 ## Features
@@ -33,6 +36,7 @@ flowchart LR
 - AI question detection with configurable confidence threshold (default 70%)
 - Automatic answer generation with context retrieval from recent message history
 - pgvector column on messages table, ready for semantic search
+- Queue-driven X posting through a real Chrome, with human-like pacing, a dry-run mode, and a circuit breaker that stops on an expired session rather than hammering the account
 
 ## Quick Start
 
@@ -49,7 +53,7 @@ cp ai-assistant/.env.example ai-assistant/.env
 # Edit both .env files with your values (see Configuration below)
 
 # 3. Start PostgreSQL
-docker-compose up -d
+docker compose up -d
 
 # 4. Install dependencies for both packages (pnpm workspace, run from the repo root)
 pnpm install
@@ -62,6 +66,13 @@ pnpm --filter scraper start
 
 # 7. In a new terminal, start the AI assistant
 pnpm --filter ai-assistant start
+
+# 8. In a third terminal, start the X poster.
+#    First run only: it opens a Chrome window with a blank dedicated profile.
+#    Log in to X manually there — the profile persists.
+#    X_DRY_RUN defaults to true, so it runs the full script without posting.
+cp x-poster/.env.example x-poster/.env
+pnpm --filter x-poster start
 ```
 
 The scraper will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
@@ -98,12 +109,43 @@ The scraper will open a Chromium window. Log in to Discord manually on the first
 | `CONTEXT_MAX_MESSAGES` | Max context messages sent to AI | `20` |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | PostgreSQL connection | required |
 
+### X Poster (`x-poster/.env`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `X_PROFILE_DIR` | Dedicated Chrome user-data directory | required |
+| `X_DEBUG_PORT` | CDP port, bound to `127.0.0.1` | `9333` |
+| `X_CHROME_PATH` | Chrome binary path | macOS install path |
+| `X_DRY_RUN` | Run the full script but never click submit | `false` |
+| `X_MIN_INTERVAL_MINUTES` | Interval floor between tweets | `20` |
+| `X_MAX_INTERVAL_MINUTES` | Interval ceiling between tweets | `60` |
+| `X_DAILY_CAP` | Maximum tweets per day | `10` |
+| `X_ACTIVE_HOURS` | Local-time posting window; must not wrap past midnight | `09:00-23:00` |
+| `X_MAX_ATTEMPTS` | Retries for retryable errors | `3` |
+| `DISCORD_WEBHOOK_URL` | Where circuit-break alerts are sent | optional |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | PostgreSQL connection | required |
+
+> `X_PROFILE_DIR` must **not** point at your everyday Chrome profile. Chrome 136+
+> ignores `--remote-debugging-port` unless a non-default `--user-data-dir` is
+> given, and an open debugging port grants any local process full control over
+> every session in that profile.
+
+Queue a tweet by inserting a row. `dedupe_key` is a `UNIQUE` idempotency key,
+so re-inserting the same logical tweet is rejected by the database:
+
+```sql
+INSERT INTO tweets (content, dedupe_key, source)
+VALUES ('Hello from the queue.', 'manual:2026-08-04-1', 'manual');
+```
+
 ## Project Structure
 
 ```
 multi-tab-listening/
-├── shared/                     # Types shared by both services (mirrors the DB schema)
-│   └── src/types.ts
+├── shared/                     # Code shared by all three services
+│   ├── src/types.ts            # Mirrors the DB schema
+│   ├── src/logger.ts           # The one winston factory
+│   └── src/db.ts               # Postgres config loader + pool factory
 ├── scraper/                    # Playwright-based Discord monitor
 │   ├── src/
 │   │   ├── discord-monitor.ts  # Tab management and message pipeline
@@ -123,6 +165,24 @@ multi-tab-listening/
 │   │   ├── scheduler/
 │   │   │   └── message-poller.ts     # Polling loop
 │   │   └── config.ts
+│   └── .env.example
+├── x-poster/                   # Queue-driven X posting via a real Chrome
+│   ├── src/
+│   │   ├── browser/
+│   │   │   ├── chrome-launcher.ts  # Attach over CDP, or spawn if absent
+│   │   │   └── launch-args.ts      # The six permitted launch flags
+│   │   ├── human/
+│   │   │   ├── delay.ts            # Log-normal action delays
+│   │   │   ├── mouse.ts            # Bezier cursor travel with overshoot
+│   │   │   └── clipboard.ts        # pbcopy/pbpaste with backup + restore
+│   │   ├── x/
+│   │   │   ├── selectors.ts        # Every X DOM selector, in one place
+│   │   │   ├── session.ts          # Login-state check
+│   │   │   └── composer.ts         # The seven-step posting script
+│   │   ├── queue/
+│   │   │   ├── tweet-queue.ts      # SKIP LOCKED claiming + state machine
+│   │   │   └── rate-limiter.ts     # Active hours, daily cap, interval
+│   │   └── errors.ts               # Retryable / Fatal / Uncertain
 │   └── .env.example
 ├── pnpm-workspace.yaml         # Workspace members + shared dependency catalog
 └── docker-compose.yml          # PostgreSQL + pgvector
