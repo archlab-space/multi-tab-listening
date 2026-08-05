@@ -251,7 +251,15 @@ async function main(): Promise<void> {
       }
     }
 
-    await sleep(nextIntervalMs(rng))
+    // Logged rather than left implicit: with the jitter resampled every
+    // cycle, a process that has gone quiet is otherwise indistinguishable
+    // from one that has hung, and the answer is only ever in this number.
+    const waitMs = nextIntervalMs(rng)
+    logger.info('Sleeping until the next cycle', {
+      minutes: Math.round(waitMs / 60_000),
+      wakesAt: new Date(Date.now() + waitMs).toISOString(),
+    })
+    await sleep(waitMs)
   }
 }
 
