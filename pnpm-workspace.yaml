@@ -4,6 +4,7 @@ packages:
   - ai-assistant
   - x-poster
   - tweet-generator
+  - db
 
 # Shared across the packages — bump here, not in each package.json.
 catalog:
@@ -13,3 +14,5 @@ catalog:
   vitest: ^3.2.4
   playwright: ^1.62.1
   dotenv: ^17.4.2
+  drizzle-orm: ^0.45.2
+  drizzle-kit: ^0.31.10

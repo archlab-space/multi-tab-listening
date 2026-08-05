@@ -1,0 +1,22 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "pull": "drizzle-kit pull",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "shared": "workspace:*",
+    "dotenv": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "drizzle-kit": "catalog:",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.0"
+  }
+}
