@@ -1,50 +1,9 @@
+import { and, eq, lte, max, sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import type { Tweet } from 'shared'
+import { createDb } from 'shared/db'
+import { tweets } from 'shared/schema'
 import type { PostingHistory } from './rate-limiter.js'
-
-interface TweetRow {
-  id: number
-  content: string
-  status: Tweet['status']
-  dedupe_key: string
-  source: string | null
-  source_ref: string | null
-  media_path: string | null
-  archetype: Tweet['archetype']
-  attempts: number
-  last_error: string | null
-  scheduled_at: Date
-  posted_at: Date | null
-  posted_url: string | null
-  created_at: Date
-  updated_at: Date
-}
-
-function toTweet(row: TweetRow): Tweet {
-  return {
-    id: row.id,
-    content: row.content,
-    status: row.status,
-    dedupeKey: row.dedupe_key,
-    source: row.source,
-    sourceRef: row.source_ref,
-    mediaPath: row.media_path,
-    archetype: row.archetype,
-    attempts: row.attempts,
-    lastError: row.last_error,
-    scheduledAt: row.scheduled_at,
-    postedAt: row.posted_at,
-    postedUrl: row.posted_url,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
-}
-
-const COLUMNS = `
-  id, content, status, dedupe_key, source, source_ref, media_path, archetype,
-  attempts, last_error, scheduled_at, posted_at, posted_url, created_at,
-  updated_at
-`
 
 export interface EnqueueInput {
   content: string
@@ -57,28 +16,32 @@ export interface EnqueueInput {
 }
 
 export class TweetQueue {
-  constructor(private readonly pool: Pool) {}
+  private readonly db: ReturnType<typeof createDb>
+
+  constructor(pool: Pool) {
+    this.db = createDb(pool)
+  }
 
   /** Returns null when the dedupe key is already taken. */
   async enqueue(input: EnqueueInput): Promise<Tweet | null> {
-    const result = await this.pool.query<TweetRow>(
-      `INSERT INTO tweets
-         (content, dedupe_key, source, source_ref, media_path, archetype,
-          scheduled_at)
-       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
-       ON CONFLICT (dedupe_key) DO NOTHING
-       RETURNING ${COLUMNS}`,
-      [
-        input.content,
-        input.dedupeKey,
-        input.source ?? null,
-        input.sourceRef ?? null,
-        input.mediaPath ?? null,
-        input.archetype ?? null,
-        input.scheduledAt ?? null,
-      ],
-    )
-    return result.rows[0] ? toTweet(result.rows[0]) : null
+    const [row] = await this.db
+      .insert(tweets)
+      .values({
+        content: input.content,
+        dedupeKey: input.dedupeKey,
+        source: input.source ?? null,
+        sourceRef: input.sourceRef ?? null,
+        mediaPath: input.mediaPath ?? null,
+        archetype: input.archetype ?? null,
+        // Omitted rather than coalesced: leaving the key out lets the
+        // column's DEFAULT NOW() apply, which is what COALESCE($7, NOW())
+        // was spelling out by hand.
+        ...(input.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
+      })
+      .onConflictDoNothing({ target: tweets.dedupeKey })
+      .returning()
+
+    return row ?? null
   }
 
   /**
@@ -88,39 +51,45 @@ export class TweetQueue {
    * claim the same row, with no coordination between them.
    */
   async claimNext(now: Date = new Date()): Promise<Tweet | null> {
-    const result = await this.pool.query<TweetRow>(
-      `UPDATE tweets
-       SET status = 'sending', attempts = attempts + 1, updated_at = NOW()
-       WHERE id = (
-         SELECT id FROM tweets
-         WHERE status = 'pending' AND scheduled_at <= $1
-         ORDER BY created_at
-         FOR UPDATE SKIP LOCKED
-         LIMIT 1
-       )
-       RETURNING ${COLUMNS}`,
-      [now],
-    )
-    return result.rows[0] ? toTweet(result.rows[0]) : null
+    const claimable = this.db
+      .select({ id: tweets.id })
+      .from(tweets)
+      .where(and(eq(tweets.status, 'pending'), lte(tweets.scheduledAt, now)))
+      .orderBy(tweets.createdAt)
+      .limit(1)
+      .for('update', { skipLocked: true })
+
+    const [row] = await this.db
+      .update(tweets)
+      .set({
+        status: 'sending',
+        attempts: sql`${tweets.attempts} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(tweets.id, sql`(${claimable})`))
+      .returning()
+
+    return row ?? null
   }
 
   async markPosted(id: number, url: string | null): Promise<void> {
-    await this.pool.query(
-      `UPDATE tweets
-       SET status = 'posted', posted_at = NOW(), posted_url = $2,
-           last_error = NULL, updated_at = NOW()
-       WHERE id = $1`,
-      [id, url],
-    )
+    await this.db
+      .update(tweets)
+      .set({
+        status: 'posted',
+        postedAt: sql`now()`,
+        postedUrl: url,
+        lastError: null,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(tweets.id, id))
   }
 
   async markFailed(id: number, error: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE tweets
-       SET status = 'failed', last_error = $2, updated_at = NOW()
-       WHERE id = $1`,
-      [id, error],
-    )
+    await this.db
+      .update(tweets)
+      .set({ status: 'failed', lastError: error, updatedAt: sql`now()` })
+      .where(eq(tweets.id, id))
   }
 
   /**
@@ -128,12 +97,10 @@ export class TweetQueue {
    * is never returned to pending — a missed tweet beats a duplicate one.
    */
   async markUncertain(id: number, error: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE tweets
-       SET status = 'uncertain', last_error = $2, updated_at = NOW()
-       WHERE id = $1`,
-      [id, error],
-    )
+    await this.db
+      .update(tweets)
+      .set({ status: 'uncertain', lastError: error, updatedAt: sql`now()` })
+      .where(eq(tweets.id, id))
   }
 
   /** Back to pending, but not before `retryAt`. `attempts` is left alone. */
@@ -142,35 +109,43 @@ export class TweetQueue {
     error: string,
     retryAt: Date,
   ): Promise<void> {
-    await this.pool.query(
-      `UPDATE tweets
-       SET status = 'pending', last_error = $2, scheduled_at = $3,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [id, error, retryAt],
-    )
+    await this.db
+      .update(tweets)
+      .set({
+        status: 'pending',
+        lastError: error,
+        scheduledAt: retryAt,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(tweets.id, id))
   }
 
   async getById(id: number): Promise<Tweet | null> {
-    const result = await this.pool.query<TweetRow>(
-      `SELECT ${COLUMNS} FROM tweets WHERE id = $1`,
-      [id],
-    )
-    return result.rows[0] ? toTweet(result.rows[0]) : null
+    const [row] = await this.db
+      .select()
+      .from(tweets)
+      .where(eq(tweets.id, id))
+      .limit(1)
+
+    return row ?? null
   }
 
   /** What the rate limiter needs to know, read straight from the table. */
   async history(now: Date = new Date()): Promise<PostingHistory> {
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const result = await this.pool.query<{ count: string; last: Date | null }>(
-      `SELECT
-         COUNT(*) FILTER (WHERE posted_at >= $1) AS count,
-         MAX(posted_at) AS last
-       FROM tweets
-       WHERE status = 'posted'`,
-      [startOfDay],
-    )
-    const row = result.rows[0]
+
+    const [row] = await this.db
+      .select({
+        count: sql<string>`count(*) filter (where ${tweets.postedAt} >= ${startOfDay})`,
+        // `max()` rather than a raw sql expression: the `sql<T>` annotation is
+        // a claim to the compiler, not a conversion, so a hand-written
+        // max(posted_at) arrives as the driver's string. The aggregate helper
+        // knows the column and hands back a Date.
+        last: max(tweets.postedAt),
+      })
+      .from(tweets)
+      .where(eq(tweets.status, 'posted'))
+
     return {
       postedToday: Number(row?.count ?? 0),
       lastPostedAt: row?.last ?? null,
