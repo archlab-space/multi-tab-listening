@@ -111,7 +111,7 @@ export class Database {
         .orderBy(desc(messages.timestamp))
         .limit(limit)
 
-      return rows as DiscordMessage[]
+      return rows
     } catch (error) {
       this.logger.error('Error fetching messages:', error)
       throw error
@@ -149,7 +149,7 @@ export class Database {
         )
         .orderBy(asc(messages.timestamp))
 
-      return rows as DiscordMessage[]
+      return rows
     } catch (error) {
       this.logger.error('Error fetching thread messages:', error)
       throw error

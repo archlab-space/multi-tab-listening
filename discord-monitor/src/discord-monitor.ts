@@ -238,7 +238,7 @@ export class DiscordMonitor {
       const shouldProcess = this.config.filtering.enabled
         ? this.messageFilter.shouldProcess(message, {
             ignoreBots: true,
-            customTrivialCheck: (msg) => msg.content.length === 0,
+            customTrivialCheck: (msg) => (msg.content ?? '').length === 0,
           })
         : true
 
@@ -255,7 +255,7 @@ export class DiscordMonitor {
         this.logger.info(
           `[${channelId}] New message from ${
             message.authorName
-          }: ${message.content.substring(0, 100)}...`,
+          }: ${(message.content ?? '').substring(0, 100)}...`,
         )
 
         // Handle thread/reply logic

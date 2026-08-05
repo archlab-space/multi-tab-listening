@@ -1,45 +1,32 @@
 /**
- * Type-level assertions, not runtime tests. They exist to prove the Drizzle
- * schema reproduces the interfaces `types.ts` has been hand-maintaining, so
- * that replacing one with the other is invisible to every consumer.
- *
- * Assignability in both directions is structural equality: a missing field
- * fails one direction, an extra field fails the other.
+ * The hand-written interfaces are gone; `types.ts` derives them. What is
+ * still worth proving is that the derived shapes carry the fields the
+ * services actually read, so a column renamed in the schema fails here rather
+ * than at whichever call site notices first.
  */
-import type { messages, tweets } from './schema.js'
-import type { DiscordMessage, Tweet } from './types.js'
+import type { DiscordMessage, Tweet, TweetArchetype } from './types.js'
 
-type SelectedTweet = typeof tweets.$inferSelect
-type SelectedMessage = typeof messages.$inferSelect
+const _tweetHasWhatTheQueueReads: Pick<
+  Tweet,
+  'id' | 'content' | 'status' | 'dedupeKey' | 'attempts' | 'scheduledAt'
+> = {} as Tweet
 
-// `Tweet` and the inferred row type must be interchangeable.
-const _tweetIsAssignableToInterface: Tweet = {} as SelectedTweet
-const _interfaceIsAssignableToTweet: SelectedTweet = {} as Tweet
+const _messageHasWhatTheAssistantReads: Pick<
+  DiscordMessage,
+  'messageId' | 'channelId' | 'content' | 'timestamp'
+> = {} as DiscordMessage
 
-/**
- * `DiscordMessage` gets a names-only check, not a bidirectional one, for two
- * reasons.
- *
- * It is deliberately narrower than the table: it omits the columns only
- * ai-assistant writes (`processed`, `is_question`, `embedding` and friends).
- *
- * And it is optimistic about nullability. `author_id`, `author_name`,
- * `content` and `timestamp` are all nullable in the database, while the
- * interface declares them required — so the row type is not assignable to it.
- * That gap is a real finding, not a schema error: the schema describes what
- * Postgres will actually hand back. Do not "fix" it by adding `.notNull()` to
- * columns that are nullable in the live database; the migration would then
- * disagree with the data. Resolving it belongs to the plan that replaces these
- * interfaces with inferred types.
- */
-type MessageKeysExist = keyof DiscordMessage extends keyof SelectedMessage
-  ? true
-  : never
-const _messageKeysExist: MessageKeysExist = true
+// The archetype union must stay closed: adding a value to the schema without
+// teaching ARCHETYPES about it should not compile.
+const _archetypes: Record<TweetArchetype, true> = {
+  digest: true,
+  metric: true,
+  take: true,
+  question: true,
+}
 
-// Referenced so the compiler does not report them as unused.
 export type _Assertions = [
-  typeof _tweetIsAssignableToInterface,
-  typeof _interfaceIsAssignableToTweet,
-  typeof _messageKeysExist,
+  typeof _tweetHasWhatTheQueueReads,
+  typeof _messageHasWhatTheAssistantReads,
+  typeof _archetypes,
 ]

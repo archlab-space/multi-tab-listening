@@ -59,7 +59,9 @@ export class MessageFilter {
   }
 
   isTrivial(message: DiscordMessage): boolean {
-    const content = message.content.trim().toLowerCase()
+    // A message with no content at all is trivial by every measure below;
+    // treating it as the empty string reaches that answer without a branch.
+    const content = (message.content ?? '').trim().toLowerCase()
 
     // Check if message is too short
     if (content.length < this.minLength) {
@@ -96,16 +98,19 @@ export class MessageFilter {
   }
 
   hasKeywords(message: DiscordMessage, keywords: string[]): boolean {
-    const content = message.content.toLowerCase()
+    // No content, no keywords.
+    const content = (message.content ?? '').toLowerCase()
     return keywords.some((keyword) => content.includes(keyword.toLowerCase()))
   }
 
   isFromBot(message: DiscordMessage): boolean {
-    // Check if the message is from a bot (common bot indicators)
+    // Check if the message is from a bot (common bot indicators).
+    // An absent author name or id is not evidence of a bot, so each test
+    // short-circuits to undefined rather than throwing.
     return (
       message.rawData?.author?.bot === true ||
-      message.authorName.toLowerCase().includes('bot') ||
-      message.authorId.endsWith('0000')
+      (message.authorName?.toLowerCase().includes('bot') ?? false) ||
+      (message.authorId?.endsWith('0000') ?? false)
     ) // Discord bot IDs often end in 0000
   }
 

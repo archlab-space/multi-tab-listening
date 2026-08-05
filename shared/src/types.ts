@@ -1,38 +1,15 @@
 /**
- * Types shared between the services. These mirror `schema.ts`, which is the
- * actual contract between them — they never call each other, they only meet
- * in Postgres.
+ * Row types, derived from `schema.ts` rather than restated. The schema is the
+ * contract between the services — they never call each other, they only meet
+ * in Postgres — so anything that can be read off it should be.
  *
- * Deriving these from the schema instead of restating them is the next plan;
- * `schema.test-d.ts` asserts they match in the meantime.
+ * What is left hand-written is what no table describes: the shape of a join,
+ * and the columns a given consumer actually depends on.
  */
+import type { messages, tweets } from './schema.js'
 
-/** One row of the `messages` table. */
-export interface DiscordMessage {
-  messageId: string
-  channelId: string
-  guildId: string
-  authorId: string
-  authorName: string
-  content: string
-  timestamp: Date
-  replyToMessageId?: string
-  threadId?: string
-  rawData: any
-}
-
-/**
- * A message joined with its channel.
- *
- * `channel_name` and `guild_name` live on the `channels` table, not on
- * `messages`, so they are only available when the two are joined — and the
- * join is a LEFT JOIN, hence `undefined` rather than optional: a caller that
- * asked for the enriched shape must acknowledge the name may be missing.
- */
-export interface DiscordMessageWithChannel extends DiscordMessage {
-  channelName: string | undefined
-  guildName: string | undefined
-}
+/** One row of the `tweets` table. */
+export type Tweet = typeof tweets.$inferSelect
 
 /**
  * Where a queued tweet is in its lifecycle.
@@ -42,12 +19,7 @@ export interface DiscordMessageWithChannel extends DiscordMessage {
  * live. Rows in this state are never retried automatically, because the
  * queue prefers a missed tweet over a duplicate one.
  */
-export type TweetStatus =
-  | 'pending'
-  | 'sending'
-  | 'posted'
-  | 'failed'
-  | 'uncertain'
+export type TweetStatus = Tweet['status']
 
 /**
  * The shape a tweet takes.
@@ -56,29 +28,45 @@ export type TweetStatus =
  * twice in a row" rule has to survive a process restart — it cannot be held
  * in memory.
  */
-export type TweetArchetype = 'digest' | 'metric' | 'take' | 'question'
+export type TweetArchetype = NonNullable<Tweet['archetype']>
 
-/** One row of the `tweets` table. */
-export interface Tweet {
-  id: number
-  content: string
-  status: TweetStatus
-  /**
-   * Idempotency key supplied by whoever enqueued the tweet. UNIQUE, so
-   * enqueueing the same logical tweet twice is rejected by Postgres rather
-   * than by application logic.
-   */
-  dedupeKey: string
-  source: string | null
-  sourceRef: string | null
-  /** Path to the card image, if this tweet has one. */
-  mediaPath: string | null
-  archetype: TweetArchetype | null
-  attempts: number
-  lastError: string | null
-  scheduledAt: Date
-  postedAt: Date | null
-  postedUrl: string | null
-  createdAt: Date
-  updatedAt: Date
+/**
+ * The columns of `messages` the discord-monitor writes and the ai-assistant
+ * reads. Narrower than the table on purpose: the analysis columns
+ * (`processed`, `is_question`, `embedding`) belong to one consumer, and a
+ * shared type that named them would invite the other to use them.
+ *
+ * Four of these are nullable in the database and were declared required here
+ * for a long time. They are not required. Code that assumed otherwise was
+ * relying on the monitor never writing a null, which nothing enforces.
+ */
+export type DiscordMessage = Pick<
+  typeof messages.$inferSelect,
+  | 'messageId'
+  | 'channelId'
+  | 'guildId'
+  | 'authorId'
+  | 'authorName'
+  | 'content'
+  | 'timestamp'
+  | 'replyToMessageId'
+  | 'threadId'
+  | 'rawData'
+>
+
+/**
+ * A message joined with its channel.
+ *
+ * `channel_name` and `guild_name` live on the `channels` table, not on
+ * `messages`, so they are only available when the two are joined — and the
+ * join is a LEFT JOIN, hence nullable: a caller that asked for the enriched
+ * shape must acknowledge the name may be missing.
+ *
+ * `null` rather than `undefined`, which the hand-written version said: an
+ * unmatched LEFT JOIN yields SQL NULL, and no driver turns that into
+ * undefined.
+ */
+export interface DiscordMessageWithChannel extends DiscordMessage {
+  channelName: string | null
+  guildName: string | null
 }

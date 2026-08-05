@@ -24,6 +24,19 @@ import {
   vector,
 } from 'drizzle-orm/pg-core'
 
+/**
+ * Discord's own message payload, stored whole in `messages.raw_data`.
+ *
+ * Only the field something actually reads is declared — the bot flag the
+ * filter checks. The index signature keeps the rest addressable without
+ * pretending we know its shape, which we do not: it is whatever Discord's
+ * DOM handed the observer that day.
+ */
+export interface DiscordRawData {
+  author?: { bot?: boolean }
+  [key: string]: unknown
+}
+
 export const channels = pgTable('channels', {
   id: serial('id').primaryKey(),
   channelId: varchar('channel_id', { length: 255 }).notNull().unique(),
@@ -47,7 +60,10 @@ export const messages = pgTable(
     replyToMessageId: varchar('reply_to_message_id', { length: 255 }),
     threadId: varchar('thread_id', { length: 255 }),
     isFiltered: boolean('is_filtered').default(false),
-    rawData: jsonb('raw_data'),
+    // `$type` is a TypeScript annotation only — the SQL type stays jsonb.
+    // Without it the column infers as `unknown` and every reader needs a cast
+    // to say what the monitor has always put there.
+    rawData: jsonb('raw_data').$type<DiscordRawData>(),
     embedding: vector('embedding', { dimensions: 1536 }),
     processed: boolean('processed').default(false),
     isQuestion: boolean('is_question'),

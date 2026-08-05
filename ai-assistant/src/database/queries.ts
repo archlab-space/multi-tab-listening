@@ -76,7 +76,7 @@ export class DatabaseQueries {
         .orderBy(asc(messages.timestamp))
         .limit(limit)
 
-      return rows as DiscordMessage[]
+      return rows
     } catch (error) {
       this.logger.error('Error fetching unprocessed messages:', error)
       throw error
@@ -162,7 +162,7 @@ export class DatabaseQueries {
         .orderBy(desc(messages.timestamp))
         .limit(limit)
 
-      return rows as DiscordMessageRow[]
+      return rows
     } catch (error) {
       this.logger.error('Error fetching question messages:', {
         channelId,
@@ -246,7 +246,7 @@ export class DatabaseQueries {
       )
       .orderBy(asc(messages.timestamp))
 
-    return rows as DiscordMessageRow[]
+    return rows
   }
 
   private async getKeywordRelevantMessages(
@@ -287,7 +287,7 @@ export class DatabaseQueries {
         .orderBy(desc(relevance), desc(messages.timestamp))
         .limit(limit)
 
-      return rows as DiscordMessageRow[]
+      return rows
     } catch (error) {
       // Fallback to simple keyword matching if full-text search fails
       this.logger.warn('Full-text search failed, using simple keyword matching')
@@ -321,7 +321,7 @@ export class DatabaseQueries {
       .orderBy(desc(messages.timestamp))
       .limit(limit)
 
-    return rows as DiscordMessageRow[]
+    return rows
   }
 
   private async getRecentMessages(
@@ -343,7 +343,7 @@ export class DatabaseQueries {
       .orderBy(desc(messages.timestamp))
       .limit(limit)
 
-    return rows as DiscordMessageRow[]
+    return rows
   }
 
   private combineAndRankMessages(
