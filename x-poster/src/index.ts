@@ -11,7 +11,7 @@ import {
   UncertainError,
   classifyError,
 } from './errors.js'
-import { notifyCircuitBreak } from './notifier.js'
+import { notifyFailure } from 'shared/notifier'
 import { decide } from './queue/rate-limiter.js'
 import { TweetQueue } from './queue/tweet-queue.js'
 import { postTweet } from './x/composer.js'
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
       // Circuit break. A dead session makes every subsequent attempt fail
       // too, and hammering a challenged account only deepens the problem.
       logger.error('Circuit break', { error: error.message })
-      await notifyCircuitBreak(config.discordWebhookUrl, error.message)
+      await notifyFailure(config.discordWebhookUrl, 'x-poster', error.message)
       await shutdown('circuit break', 1)
     }
   }
@@ -158,6 +158,6 @@ async function main(): Promise<void> {
 
 main().catch(async (error) => {
   logger.error('Unrecoverable startup failure', { error: String(error) })
-  await notifyCircuitBreak(config.discordWebhookUrl, String(error))
+  await notifyFailure(config.discordWebhookUrl, 'x-poster', String(error))
   await shutdown('startup failure', 1)
 })

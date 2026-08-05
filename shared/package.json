@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/types.ts",
     "./logger": "./src/logger.ts",
-    "./db": "./src/db.ts"
+    "./db": "./src/db.ts",
+    "./notifier": "./src/notifier.ts",
+    "./rng": "./src/rng.ts"
   },
   "types": "./src/types.ts",
   "scripts": {
