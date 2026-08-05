@@ -3,6 +3,14 @@ import { createLogger } from 'shared/logger'
 import { notifyFailure } from 'shared/notifier'
 import { mulberry32, type Rng } from 'shared/rng'
 import { loadConfig } from './config.js'
+import { pickArchetype } from './llm/archetypes.js'
+import { LlmClient, LlmError } from './llm/client.js'
+import {
+  generateTweet,
+  GenerationGaveUp,
+  type PipelineResult,
+} from './llm/pipeline.js'
+import { loadBannedPhrases, type BannedPhrases } from './llm/validate.js'
 import { startOfDayIn } from './select/clock.js'
 import { selectCandidate, type PoolDeps } from './select/pool.js'
 import { orderKinds } from './select/quota.js'
@@ -14,6 +22,10 @@ const config = loadConfig()
 const pool = createPool(config.db)
 const store = new GeneratorStore(pool)
 const agentlens = new AgentLensClient(config.agentlensBaseUrl)
+const llm = new LlmClient(config.llm)
+
+/** Loaded once, on the first cycle that needs it. */
+let banned: BannedPhrases | null = null
 
 const deps: PoolDeps = {
   listBlogs: (jobType, limit) => agentlens.listBlogs(jobType, limit),
@@ -96,16 +108,45 @@ async function tick(): Promise<void> {
       continue
     }
 
-    // Phase 1 placeholder. The LLM pipeline replaces this; until then the
-    // queue carries the dispatch title so that scheduling and deduplication
-    // are observable end to end with X_DRY_RUN=true.
-    const content = candidate.title.slice(0, 280)
+    banned ??= await loadBannedPhrases(config.bannedPhrasesFile)
+    const archetype = pickArchetype(await store.lastArchetype())
+
+    // Declared outside the try so the card renderer can reach the draft.
+    let generated: PipelineResult
+    try {
+      generated = await generateTweet(candidate, archetype, {
+        chat: (messages) => llm.chat(messages),
+        banned,
+        maxRounds: config.maxRounds,
+      })
+      logger.info('Generated', {
+        externalId: candidate.externalId,
+        archetype,
+        rounds: generated.rounds,
+      })
+    } catch (error) {
+      if (error instanceof GenerationGaveUp) {
+        // The candidate stays out of the pool for good after three of these,
+        // so one item the model cannot handle cannot starve its source.
+        await store.recordFailure(
+          candidate.externalId,
+          error.violations.join('; '),
+        )
+        logger.warn('Gave up on a candidate', {
+          externalId: candidate.externalId,
+          violations: error.violations,
+        })
+        return
+      }
+      throw error
+    }
 
     const id = await store.enqueue({
-      content,
+      content: generated.text,
       dedupeKey: candidate.dedupeKey,
       source: candidate.kind,
       sourceRef: candidate.externalId,
+      archetype,
     })
 
     if (id === null) {
@@ -154,7 +195,7 @@ async function main(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
-      if (error instanceof AgentLensError) {
+      if (error instanceof AgentLensError || error instanceof LlmError) {
         consecutiveSourceFailures += 1
         logger.warn('An upstream dependency is unreachable', {
           error: message,
