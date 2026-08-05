@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createPool, loadDbConfig } from './db.js'
+import { createDb, createPool, loadDbConfig } from './db.js'
+import { tweets } from './schema.js'
 
 describe('loadDbConfig', () => {
   it('reads every field from the environment', () => {
@@ -75,6 +76,28 @@ describe('createPool', () => {
     try {
       const result = await pool.query('SELECT 1 AS one')
       expect(result.rows[0]).toEqual({ one: 1 })
+    } finally {
+      await pool.end()
+    }
+  })
+})
+
+describe('createDb', () => {
+  it('runs a Drizzle query against the real database', async () => {
+    const pool = createPool({
+      user: 'app_user',
+      host: 'localhost',
+      database: 'multi_tab_listening',
+      password: 'defaultpassword123',
+      port: 5432,
+    })
+    try {
+      const db = createDb(pool)
+      // The point is not the rows: it is that a Drizzle query compiles to SQL
+      // Postgres accepts, and comes back shaped by the schema rather than by
+      // the column names.
+      const rows = await db.select().from(tweets).limit(0)
+      expect(rows).toEqual([])
     } finally {
       await pool.end()
     }

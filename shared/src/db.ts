@@ -1,4 +1,6 @@
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool, type PoolConfig } from 'pg'
+import * as schema from './schema.js'
 
 /** The Postgres connection shape every service in this workspace uses. */
 export interface DbConfig {
@@ -48,4 +50,17 @@ export function createPool(
   overrides: PoolConfig = {},
 ): Pool {
   return new Pool({ ...POOL_DEFAULTS, ...config, ...overrides })
+}
+
+/**
+ * The Drizzle handle, bound to a pool the caller already owns.
+ *
+ * Drizzle does not replace `pg` here — it wraps the same pool, so connection
+ * limits, timeouts and shutdown stay in one place. Passing the schema is what
+ * makes query results come back keyed by the schema's field names instead of
+ * the database's column names, which is the whole reason the hand-written row
+ * mappers can go away.
+ */
+export function createDb(pool: Pool): NodePgDatabase<typeof schema> {
+  return drizzle({ client: pool, schema })
 }
