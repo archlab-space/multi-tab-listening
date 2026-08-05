@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "test-webhook": "bun run src/discord/test-webhook.ts"
+    "test-webhook": "bun run src/discord/test-webhook.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@types/pg": "catalog:",
@@ -15,7 +16,9 @@
     "winston": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "dotenv": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "typescript": "^5 || ^6.0.0"
