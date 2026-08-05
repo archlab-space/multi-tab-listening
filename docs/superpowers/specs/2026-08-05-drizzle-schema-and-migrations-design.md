@@ -148,7 +148,7 @@ places Drizzle cannot express directly and an `sql` template is used:
 
 | Location | Current SQL | Drizzle |
 |---|---|---|
-| `x-poster/.../tweet-queue.ts:98` | `FOR UPDATE SKIP LOCKED` | `.for('update', { skipLocked: true })` |
+| `x-poster/.../tweet-queue.ts:98` | `FOR UPDATE SKIP LOCKED` | `.for('update').skipLocked()` |
 | `x-poster/.../tweet-queue.ts:93` | `attempts = attempts + 1` | `` sql`${tweets.attempts} + 1` `` |
 | `x-poster/.../tweet-queue.ts:167` | `COUNT(*) FILTER (WHERE ...)` | `` sql`count(*) filter (where ...)` `` |
 | `x-poster/.../tweet-queue.ts:68` | `COALESCE($7, NOW())` | `` sql`coalesce(...)` `` |
