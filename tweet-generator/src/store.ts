@@ -1,5 +1,19 @@
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  max,
+  sql,
+} from 'drizzle-orm'
 import type { Pool } from 'pg'
 import type { TweetArchetype } from 'shared'
+import { createDb } from 'shared/db'
+import { generationAttempts, tweets } from 'shared/schema'
 import { SOURCE_PRIORITY, type SourceKind } from './config.js'
 import type { QuotaUsage } from './select/quota.js'
 
@@ -28,7 +42,11 @@ export interface EnqueueInput {
  * the modules that happen to need them.
  */
 export class GeneratorStore {
-  constructor(private readonly pool: Pool) {}
+  private readonly db: ReturnType<typeof createDb>
+
+  constructor(pool: Pool) {
+    this.db = createDb(pool)
+  }
 
   /**
    * Writes one queued tweet. Returns null when the key is already taken.
@@ -43,22 +61,20 @@ export class GeneratorStore {
    * UNIQUE constraint is the entire deduplication mechanism for blogs.
    */
   async enqueue(input: EnqueueInput): Promise<number | null> {
-    const result = await this.pool.query<{ id: number }>(
-      `INSERT INTO tweets
-         (content, dedupe_key, source, source_ref, archetype, media_path)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (dedupe_key) DO NOTHING
-       RETURNING id`,
-      [
-        input.content,
-        input.dedupeKey,
-        input.source ?? null,
-        input.sourceRef ?? null,
-        input.archetype ?? null,
-        input.mediaPath ?? null,
-      ],
-    )
-    return result.rows[0]?.id ?? null
+    const [row] = await this.db
+      .insert(tweets)
+      .values({
+        content: input.content,
+        dedupeKey: input.dedupeKey,
+        source: input.source ?? null,
+        sourceRef: input.sourceRef ?? null,
+        archetype: input.archetype ?? null,
+        mediaPath: input.mediaPath ?? null,
+      })
+      .onConflictDoNothing({ target: tweets.dedupeKey })
+      .returning({ id: tweets.id })
+
+    return row?.id ?? null
   }
 
   /**
@@ -69,21 +85,20 @@ export class GeneratorStore {
    * replaced, quietly exceeding the daily cap.
    */
   async usageSince(dayStart: Date): Promise<QuotaUsage> {
-    const result = await this.pool.query<{ source: string; count: string }>(
-      `SELECT source, COUNT(*) AS count
-       FROM tweets
-       WHERE created_at >= $1 AND source IS NOT NULL
-       GROUP BY source`,
-      [dayStart],
-    )
+    // Drizzle's count() comes back a number; the old code read COUNT(*) as a
+    // string and cast it. Same query, one less conversion.
+    const rows = await this.db
+      .select({ source: tweets.source, count: count() })
+      .from(tweets)
+      .where(and(gte(tweets.createdAt, dayStart), isNotNull(tweets.source)))
+      .groupBy(tweets.source)
 
     const used = emptyUsage()
     let total = 0
-    for (const row of result.rows) {
-      const count = Number(row.count)
-      total += count
-      if ((SOURCE_PRIORITY as readonly string[]).includes(row.source)) {
-        used[row.source as SourceKind] = count
+    for (const row of rows) {
+      total += row.count
+      if ((SOURCE_PRIORITY as readonly string[]).includes(row.source ?? '')) {
+        used[row.source as SourceKind] = row.count
       }
     }
     return { used, total }
@@ -91,76 +106,94 @@ export class GeneratorStore {
 
   async knownDedupeKeys(keys: string[]): Promise<Set<string>> {
     if (keys.length === 0) return new Set()
-    const result = await this.pool.query<{ dedupe_key: string }>(
-      `SELECT dedupe_key FROM tweets WHERE dedupe_key = ANY($1)`,
-      [keys],
-    )
-    return new Set(result.rows.map((row) => row.dedupe_key))
+    const rows = await this.db
+      .select({ dedupeKey: tweets.dedupeKey })
+      .from(tweets)
+      .where(inArray(tweets.dedupeKey, keys))
+
+    return new Set(rows.map((row) => row.dedupeKey))
   }
 
   /** Backs the "never the same archetype twice in a row" rule. */
   async lastArchetype(): Promise<TweetArchetype | null> {
-    const result = await this.pool.query<{ archetype: TweetArchetype | null }>(
-      `SELECT archetype FROM tweets
-       WHERE archetype IS NOT NULL
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    )
-    return result.rows[0]?.archetype ?? null
+    const [row] = await this.db
+      .select({ archetype: tweets.archetype })
+      .from(tweets)
+      .where(isNotNull(tweets.archetype))
+      .orderBy(desc(tweets.createdAt))
+      .limit(1)
+
+    return row?.archetype ?? null
   }
 
   /** The watchdog's input: when the queue last gained a row. */
   async lastEnqueuedAt(): Promise<Date | null> {
-    const result = await this.pool.query<{ at: Date | null }>(
-      `SELECT MAX(created_at) AS at FROM tweets`,
-    )
-    return result.rows[0]?.at ?? null
+    // max(), not a raw sql expression: sql<T> asserts a type without
+    // converting the value, so a hand-written MAX() arrives as a string.
+    const [row] = await this.db
+      .select({ at: max(tweets.createdAt) })
+      .from(tweets)
+
+    return row?.at ?? null
   }
 
   async projectPostedSince(sourceRef: string, since: Date): Promise<boolean> {
-    const result = await this.pool.query<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM tweets
-         WHERE source_ref = $1 AND posted_at IS NOT NULL AND posted_at >= $2
-       ) AS exists`,
-      [sourceRef, since],
-    )
-    return result.rows[0]?.exists ?? false
+    // One row and a presence check rather than asking Postgres for EXISTS.
+    // LIMIT 1 stops the scan at the same point EXISTS would.
+    const [row] = await this.db
+      .select({ id: tweets.id })
+      .from(tweets)
+      .where(
+        and(
+          eq(tweets.sourceRef, sourceRef),
+          isNotNull(tweets.postedAt),
+          gte(tweets.postedAt, since),
+        ),
+      )
+      .limit(1)
+
+    return row !== undefined
   }
 
   async failureCounts(externalIds: string[]): Promise<Map<string, number>> {
     if (externalIds.length === 0) return new Map()
-    const result = await this.pool.query<{
-      external_id: string
-      attempts: number
-    }>(
-      `SELECT external_id, attempts FROM generation_attempts
-       WHERE external_id = ANY($1)`,
-      [externalIds],
-    )
-    return new Map(result.rows.map((row) => [row.external_id, row.attempts]))
+    const rows = await this.db
+      .select({
+        externalId: generationAttempts.externalId,
+        attempts: generationAttempts.attempts,
+      })
+      .from(generationAttempts)
+      .where(inArray(generationAttempts.externalId, externalIds))
+
+    return new Map(rows.map((row) => [row.externalId, row.attempts]))
   }
 
   async recordFailure(externalId: string, error: string): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO generation_attempts (external_id, attempts, last_error)
-       VALUES ($1, 1, $2)
-       ON CONFLICT (external_id) DO UPDATE
-         SET attempts = generation_attempts.attempts + 1,
-             last_error = EXCLUDED.last_error,
-             updated_at = NOW()`,
-      [externalId, error],
-    )
+    await this.db
+      .insert(generationAttempts)
+      .values({ externalId, attempts: 1, lastError: error })
+      .onConflictDoUpdate({
+        target: generationAttempts.externalId,
+        set: {
+          attempts: sql`${generationAttempts.attempts} + 1`,
+          lastError: sql`excluded.last_error`,
+          updatedAt: sql`now()`,
+        },
+      })
   }
 
   async expiredMedia(before: Date): Promise<string[]> {
-    const result = await this.pool.query<{ media_path: string }>(
-      `SELECT media_path FROM tweets
-       WHERE media_path IS NOT NULL
-         AND posted_at IS NOT NULL
-         AND posted_at < $1`,
-      [before],
-    )
-    return result.rows.map((row) => row.media_path)
+    const rows = await this.db
+      .select({ mediaPath: tweets.mediaPath })
+      .from(tweets)
+      .where(
+        and(
+          isNotNull(tweets.mediaPath),
+          isNotNull(tweets.postedAt),
+          lt(tweets.postedAt, before),
+        ),
+      )
+
+    return rows.map((row) => row.mediaPath as string)
   }
 }
