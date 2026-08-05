@@ -8,12 +8,14 @@
     "./logger": "./src/logger.ts",
     "./db": "./src/db.ts",
     "./errors": "./src/errors.ts",
+    "./schema": "./src/schema.ts",
     "./notifier": "./src/notifier.ts",
     "./rng": "./src/rng.ts"
   },
   "types": "./src/types.ts",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@types/pg": "catalog:",
+    "typescript": "^6.0.3",
     "vitest": "catalog:"
   }
 }
