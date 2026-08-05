@@ -31,7 +31,12 @@ export interface BlogReference {
 
 export interface BlogDetail extends BlogListItem {
   body_markdown: string
-  references: BlogReference[]
+  /**
+   * Null, not `[]`, when a dispatch has no named sources — x_digest is
+   * synthesised from a search, so it always arrives this way. Typing this
+   * as a plain array is what crashed the first real run.
+   */
+  references: BlogReference[] | null
 }
 
 export interface ProjectListItem {

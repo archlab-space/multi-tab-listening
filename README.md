@@ -10,10 +10,11 @@ A browser-automation tool that monitors multiple Discord channels simultaneously
 
 ## Overview
 
-This project has three independently running modules:
+This project has four independently running modules:
 
 - **Discord Monitor** — opens one browser tab per Discord channel using Playwright, injects a `MutationObserver` script to capture new messages in real time, filters noise, and stores everything in PostgreSQL.
 - **AI Assistant** — polls the database for unprocessed messages, calls the Fireworks AI API to detect whether each message is a question (≥70% confidence threshold), retrieves relevant context from message history, generates an answer, and pushes both to a Discord channel via Webhook.
+- **Tweet Generator** — pulls AI-industry dispatches from the AgentLens public API, writes each one up through a pinned local LLM, renders a card image, and enqueues the result for the X Poster to drain.
 - **X Poster** — drains a queue of pending tweets from the database and posts each one through a real Chrome browser driven over CDP, pacing the interaction so it reads as human.
 
 ## Architecture
@@ -24,6 +25,8 @@ flowchart LR
     B -->|store| C[("PostgreSQL\n+ pgvector")]
     C -->|poll| D["AI Assistant\n(Fireworks AI)"]
     D -->|"question detected"| E["Discord Webhook\n(Q&A notification)"]
+    H["AgentLens API"] --> I["Tweet Generator\n(pinned local LLM)"]
+    I -->|"enqueue tweet"| C
     C -->|"claim pending tweet"| F["X Poster\n(real Chrome via CDP)"]
     F -->|post| G["x.com"]
 ```
@@ -73,7 +76,22 @@ pnpm --filter ai-assistant start
 #    X_DRY_RUN defaults to true, so it runs the full script without posting.
 cp x-poster/.env.example x-poster/.env
 pnpm --filter x-poster start
+
+# 9. In a fourth terminal, start the tweet generator.
+#    LLM_MODEL is required and must name one model — "auto" is rejected.
+cp tweet-generator/.env.example tweet-generator/.env
+pnpm --filter tweet-generator start
 ```
+
+The tweet generator needs a local OpenAI-compatible endpoint. With OmniRoute:
+
+- **Pin `LLM_MODEL` to one model.** `auto` is rejected by the config loader — it
+  falls back across four provider tiers, so the same prompt is served by a
+  frontier model one day and a free tier-4 model the next, and these posts go
+  out unattended.
+- **Disable prompt compression (RTK / Caveman) on this route.** The prompts
+  carry a banned-phrase list and a hard character budget: material whose exact
+  wording is the point.
 
 The Discord monitor will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
 

@@ -6,6 +6,7 @@ import {
 } from './candidates.js'
 import {
   blogDetailResponse,
+  digestDetailResponse,
   projectDetailResponse,
 } from './agentlens.fixtures.js'
 import type { BlogDetail, ProjectDetail } from './agentlens.js'
@@ -65,6 +66,16 @@ describe('blogToCandidate', () => {
 
   it('leaves the source link null when there are no references', () => {
     expect(blogToCandidate({ ...blog, references: [] }).sourceUrl).toBeNull()
+  })
+
+  it('survives a null references field', () => {
+    // x_digest dispatches are synthesised from a search rather than from
+    // named sources, so the API sends `references: null` — not `[]`. A real
+    // run crashed on `null[0]` here before this case existed.
+    const digest = digestDetailResponse as unknown as BlogDetail
+    const candidate = blogToCandidate(digest)
+    expect(candidate.sourceUrl).toBeNull()
+    expect(candidate.kind).toBe('x_digest')
   })
 })
 

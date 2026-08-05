@@ -35,7 +35,7 @@ export function formatCount(n: number): string {
 }
 
 export function blogToCandidate(blog: BlogDetail): Candidate {
-  const reference = blog.references[0]
+  const reference = blog.references?.[0]
   return {
     kind: blog.job_type,
     externalId: blog.id,

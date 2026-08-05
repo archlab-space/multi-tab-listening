@@ -56,6 +56,29 @@ export const blogDetailResponse = {
   translation_status: 'ready',
 }
 
+/**
+ * An x_digest body. Note `references: null` — not `[]`.
+ *
+ * Digests are synthesised from a search rather than from named sources, so
+ * the API sends null. Captured from the live API on 2026-08-05 after a real
+ * run dereferenced it and crashed.
+ */
+export const digestDetailResponse = {
+  id: 'f3f0f8e8-f847-4ce9-bc08-9e4070f15b9d',
+  title: 'AI & Frontier Tech Roundup – Model Scaling, Agent Routers',
+  summary: 'Recent posts highlight a surge in open-source LLM scaling.',
+  period_label: null,
+  job_type: 'x_digest',
+  source_id: 'x:search',
+  model: 'openai/gpt-oss-120b',
+  occurred_at: null,
+  generated_at: '2026-08-05T01:05:46.079Z',
+  signal: null,
+  body_markdown: '## Model scaling\n\nOpen-source scaling continues.\n',
+  references: null,
+  translation_status: 'ready',
+}
+
 export const digestListResponse = {
   items: [
     {

@@ -3,6 +3,7 @@ import { AgentLensClient, AgentLensError } from './agentlens.js'
 import {
   blogDetailResponse,
   blogListResponse,
+  digestDetailResponse,
   projectDetailResponse,
   projectListResponse,
 } from './agentlens.fixtures.js'
@@ -51,7 +52,16 @@ describe('AgentLensClient', () => {
     const url = new URL(fetchImpl.mock.calls[0]![0] as string)
     expect(url.pathname).toBe('/blogs/96753d8e-aea0-4977-b677-6ba4098850bc')
     expect(blog.body_markdown).toContain('2.6B-parameter')
-    expect(blog.references[0]!.url).toBe('https://github.com/LiquidAI/LFM2.5')
+    expect(blog.references?.[0]!.url).toBe('https://github.com/LiquidAI/LFM2.5')
+  })
+
+  it('preserves a null references field rather than coercing it', async () => {
+    // x_digest sends null here, and the normaliser has to see that.
+    const fetchImpl = stubFetch(digestDetailResponse)
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    const digest = await client.getBlog('f3f0f8e8-f847-4ce9-bc08-9e4070f15b9d')
+    expect(digest.references).toBeNull()
   })
 
   it('requests projects sorted by momentum', async () => {
