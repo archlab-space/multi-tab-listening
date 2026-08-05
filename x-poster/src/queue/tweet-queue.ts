@@ -9,6 +9,8 @@ interface TweetRow {
   dedupe_key: string
   source: string | null
   source_ref: string | null
+  media_path: string | null
+  archetype: Tweet['archetype']
   attempts: number
   last_error: string | null
   scheduled_at: Date
@@ -26,6 +28,8 @@ function toTweet(row: TweetRow): Tweet {
     dedupeKey: row.dedupe_key,
     source: row.source,
     sourceRef: row.source_ref,
+    mediaPath: row.media_path,
+    archetype: row.archetype,
     attempts: row.attempts,
     lastError: row.last_error,
     scheduledAt: row.scheduled_at,
@@ -37,8 +41,9 @@ function toTweet(row: TweetRow): Tweet {
 }
 
 const COLUMNS = `
-  id, content, status, dedupe_key, source, source_ref, attempts, last_error,
-  scheduled_at, posted_at, posted_url, created_at, updated_at
+  id, content, status, dedupe_key, source, source_ref, media_path, archetype,
+  attempts, last_error, scheduled_at, posted_at, posted_url, created_at,
+  updated_at
 `
 
 export interface EnqueueInput {
@@ -46,6 +51,8 @@ export interface EnqueueInput {
   dedupeKey: string
   source?: string
   sourceRef?: string
+  mediaPath?: string
+  archetype?: Tweet['archetype']
   scheduledAt?: Date
 }
 
@@ -55,8 +62,10 @@ export class TweetQueue {
   /** Returns null when the dedupe key is already taken. */
   async enqueue(input: EnqueueInput): Promise<Tweet | null> {
     const result = await this.pool.query<TweetRow>(
-      `INSERT INTO tweets (content, dedupe_key, source, source_ref, scheduled_at)
-       VALUES ($1, $2, $3, $4, COALESCE($5, NOW()))
+      `INSERT INTO tweets
+         (content, dedupe_key, source, source_ref, media_path, archetype,
+          scheduled_at)
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
        ON CONFLICT (dedupe_key) DO NOTHING
        RETURNING ${COLUMNS}`,
       [
@@ -64,6 +73,8 @@ export class TweetQueue {
         input.dedupeKey,
         input.source ?? null,
         input.sourceRef ?? null,
+        input.mediaPath ?? null,
+        input.archetype ?? null,
         input.scheduledAt ?? null,
       ],
     )

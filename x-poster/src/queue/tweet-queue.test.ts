@@ -52,6 +52,34 @@ describe('enqueue', () => {
     expect(tweet!.source).toBe('ai-assistant')
     expect(tweet!.sourceRef).toBe('123456789')
   })
+
+  it('round-trips the media path and archetype', async () => {
+    const tweet = await queue.enqueue({
+      content: 'hello',
+      // The `test:` prefix matters — the cleanup at the top of this file
+      // deletes by `dedupe_key LIKE 'test:%'`, and a row outside that prefix
+      // survives the suite and pollutes the queue.
+      dedupeKey: 'test:media',
+      source: 'lab_article',
+      sourceRef: 'abc',
+      mediaPath: './media/abc.png',
+      archetype: 'digest',
+    })
+
+    expect(tweet).not.toBeNull()
+    expect(tweet!.mediaPath).toBe('./media/abc.png')
+    expect(tweet!.archetype).toBe('digest')
+  })
+
+  it('leaves both null when they are not supplied', async () => {
+    const tweet = await queue.enqueue({
+      content: 'hello',
+      dedupeKey: 'test:no-media',
+    })
+
+    expect(tweet!.mediaPath).toBeNull()
+    expect(tweet!.archetype).toBeNull()
+  })
 })
 
 describe('claimNext', () => {
