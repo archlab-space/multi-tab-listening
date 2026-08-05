@@ -35,7 +35,12 @@ export const ARCHETYPES: Record<TweetArchetype, ArchetypeSpec> = {
     hasImage: true,
     fields: { metric: 40, line: 200 },
   },
-  take: { name: 'take', weight: 20, hasImage: false, fields: { text: 240 } },
+  take: {
+    name: 'take',
+    weight: 20,
+    hasImage: false,
+    fields: { text: 240 }
+  },
   question: {
     name: 'question',
     weight: 15,
