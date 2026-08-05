@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "lib": ["ES2022"],
+    // DOM is here for the one `page.evaluate` callback in image/render.ts,
+    // which runs in the browser context. discord-monitor does the same for
+    // its injected observer script.
+    "lib": ["ES2022", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,

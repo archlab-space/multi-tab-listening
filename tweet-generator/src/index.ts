@@ -3,7 +3,9 @@ import { createLogger } from 'shared/logger'
 import { notifyFailure } from 'shared/notifier'
 import { mulberry32, type Rng } from 'shared/rng'
 import { loadConfig } from './config.js'
-import { pickArchetype } from './llm/archetypes.js'
+import { cleanupMedia, mediaPathFor, renderCard } from './image/render.js'
+import { pickVariant, renderTemplate } from './image/template.js'
+import { ARCHETYPES, pickArchetype } from './llm/archetypes.js'
 import { LlmClient, LlmError } from './llm/client.js'
 import {
   generateTweet,
@@ -26,6 +28,13 @@ const llm = new LlmClient(config.llm)
 
 /** Loaded once, on the first cycle that needs it. */
 let banned: BannedPhrases | null = null
+
+/**
+ * Unlike the archetype, this is not worth a database column: repeating a
+ * card style is far less visible than repeating a post shape, and losing the
+ * value on restart costs nothing.
+ */
+let lastVariant: string | null = null
 
 const deps: PoolDeps = {
   listBlogs: (jobType, limit) => agentlens.listBlogs(jobType, limit),
@@ -92,6 +101,12 @@ async function tick(): Promise<void> {
   const now = new Date()
   await checkIdleWatchdog(now)
 
+  const retentionCutoff = new Date(
+    now.getTime() - config.mediaRetentionDays * 86_400_000,
+  )
+  const removed = await cleanupMedia(await store.expiredMedia(retentionCutoff))
+  if (removed > 0) logger.info('Cleaned up old media', { removed })
+
   const dayStart = startOfDayIn(config.timezone, now)
   const usage = await store.usageSince(dayStart)
   const order = orderKinds(now, usage, config)
@@ -141,12 +156,30 @@ async function tick(): Promise<void> {
       throw error
     }
 
+    let mediaPath: string | undefined
+    if (ARCHETYPES[archetype].hasImage) {
+      const cardArchetype = archetype as 'digest' | 'metric'
+      const variant = pickVariant(cardArchetype, lastVariant)
+      const path = mediaPathFor(config.mediaDir, candidate.dedupeKey)
+      // A render failure abandons the whole item. Enqueueing the text alone
+      // would ship a degraded post that can never be repaired, because the
+      // dedupe key is spent the moment the row exists.
+      await renderCard(
+        renderTemplate({ draft: generated.draft, candidate, variant }),
+        path,
+      )
+      lastVariant = variant
+      mediaPath = path
+      logger.debug('Rendered a card', { path, variant })
+    }
+
     const id = await store.enqueue({
       content: generated.text,
       dedupeKey: candidate.dedupeKey,
       source: candidate.kind,
       sourceRef: candidate.externalId,
       archetype,
+      mediaPath,
     })
 
     if (id === null) {
