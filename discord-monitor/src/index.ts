@@ -1,6 +1,5 @@
 import { DiscordMonitor } from './discord-monitor.js'
 import { loadConfig, validateConfig } from './config.js'
-import { setupDatabase } from './setup-database.js'
 
 async function main() {
   console.log('🚀 Starting Discord Multi-Tab Monitor...')
@@ -18,10 +17,6 @@ async function main() {
     console.log(
       `   - Database: ${config.database.host}:${config.database.port}/${config.database.database}`,
     )
-
-    // Setup database if needed
-    console.log('🗄️  Setting up database...')
-    await setupDatabase()
 
     // Create and start monitor
     console.log('🌐 Starting Discord monitor...')

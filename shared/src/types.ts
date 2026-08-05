@@ -1,9 +1,10 @@
 /**
- * Types shared between the discord-monitor (writes) and the ai-assistant
- * (reads). These mirror the schema created in
- * discord-monitor/src/setup-database.ts,
- * which is the actual contract between the two services — they never call
- * each other, they only meet in Postgres.
+ * Types shared between the services. These mirror `schema.ts`, which is the
+ * actual contract between them — they never call each other, they only meet
+ * in Postgres.
+ *
+ * Deriving these from the schema instead of restating them is the next plan;
+ * `schema.test-d.ts` asserts they match in the meantime.
  */
 
 /** One row of the `messages` table. */

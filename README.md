@@ -54,37 +54,55 @@ git clone https://github.com/your-username/multi-tab-listening.git
 cd multi-tab-listening
 
 # 2. Configure environment variables
+#    The root .env holds DB_PASSWORD alone. Docker reads it when creating the
+#    container and the migrator reads it when connecting, so one value governs
+#    both and they cannot drift apart.
+cp .env.example .env
 cp discord-monitor/.env.example discord-monitor/.env
 cp ai-assistant/.env.example ai-assistant/.env
-# Edit both .env files with your values (see Configuration below)
+# Edit the .env files with your values (see Configuration below)
 
-# 3. Start PostgreSQL
-docker compose up -d
-
-# 4. Install dependencies for both packages (pnpm workspace, run from the repo root)
+# 3. Install dependencies (pnpm workspace, run from the repo root)
 pnpm install
 
-# 5. Initialise the database schema
-pnpm --filter discord-monitor run setup-db
+# 4. Start PostgreSQL and apply migrations
+pnpm db:up
 
-# 6. Start the Discord monitor (keeps running, one tab per channel)
+# 5. Start the Discord monitor (keeps running, one tab per channel)
 pnpm --filter discord-monitor start
 
-# 7. In a new terminal, start the AI assistant
+# 6. In a new terminal, start the AI assistant
 pnpm --filter ai-assistant start
 
-# 8. In a third terminal, start the X poster.
+# 7. In a third terminal, start the X poster.
 #    First run only: it opens a Chrome window with a blank dedicated profile.
 #    Log in to X manually there — the profile persists.
 #    X_DRY_RUN defaults to true, so it runs the full script without posting.
 cp x-poster/.env.example x-poster/.env
 pnpm --filter x-poster start
 
-# 9. In a fourth terminal, start the tweet generator.
+# 8. In a fourth terminal, start the tweet generator.
 #    LLM_MODEL is required and must name one model — "auto" is rejected.
 cp tweet-generator/.env.example tweet-generator/.env
 pnpm --filter tweet-generator start
 ```
+
+### Database commands
+
+The schema lives in `shared/src/schema.ts` and is applied through migrations in
+`db/migrations/`. No service creates tables at startup.
+
+| Command | What it does |
+|---|---|
+| `pnpm db:up` | Start the container, wait until healthy, apply migrations |
+| `pnpm db:migrate` | Apply pending migrations only |
+| `pnpm db:generate` | Generate a migration after editing `schema.ts` |
+| `pnpm db:studio` | Browse the data in a local GUI |
+| `pnpm db:reset` | Destroy the volume and rebuild from empty — **deletes all data** |
+| `pnpm db:down` | Stop the container, keeping the data |
+
+`DB_PASSWORD` is written into the volume the first time the container is
+created. Changing it afterwards has no effect until `pnpm db:reset`.
 
 The tweet generator needs a local OpenAI-compatible endpoint. With OmniRoute:
 

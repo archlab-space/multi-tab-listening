@@ -7,7 +7,6 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
-    "setup-db": "tsx src/setup-database.ts",
     "build": "tsc"
   },
   "keywords": [],

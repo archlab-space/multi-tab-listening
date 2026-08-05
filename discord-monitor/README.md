@@ -44,9 +44,11 @@ cp .env.example .env
 
 ### 4. Database Setup
 
+The schema belongs to the workspace, not to this service — it is defined in
+`shared/src/schema.ts` and applied by migrations. Run this from the repo root:
+
 ```bash
-# Create database schema
-pnpm run setup-db
+pnpm db:up
 ```
 
 ### 5. Run
@@ -131,7 +133,6 @@ LIMIT 10;
 - `pnpm run dev`: Start with auto-reload
 - `pnpm run start`: Start production mode
 - `pnpm run build`: Compile TypeScript
-- `pnpm run setup-db`: Initialize database
 
 ### Project Structure
 ```
@@ -142,8 +143,7 @@ src/
 ├── database.ts          # Database operations
 ├── message-filter.ts    # Message filtering logic
 ├── config.ts           # Configuration management
-├── types.ts            # TypeScript interfaces
-└── setup-database.ts   # Database initialization
+└── types.ts            # TypeScript interfaces
 ```
 
 ## Troubleshooting
