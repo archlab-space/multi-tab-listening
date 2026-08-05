@@ -1,4 +1,12 @@
 {
   "private": true,
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "db:up": "docker compose up -d --wait && pnpm --filter db run migrate",
+    "db:migrate": "pnpm --filter db run migrate",
+    "db:generate": "pnpm --filter db run generate",
+    "db:studio": "pnpm --filter db run studio",
+    "db:reset": "docker compose down -v && pnpm run db:up",
+    "db:down": "docker compose down"
+  }
 }

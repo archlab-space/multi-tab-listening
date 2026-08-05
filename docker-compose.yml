@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: pgvector/pgvector:pg15
@@ -14,6 +12,13 @@ services:
       # this database — with a password committed to a public repo — on the
       # local network for anyone on the same WiFi.
       - "127.0.0.1:5432:5432"
+    # `docker compose up --wait` blocks on this, so `pnpm db:up` can run
+    # migrations immediately after instead of guessing with sleep.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d multi_tab_listening"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
