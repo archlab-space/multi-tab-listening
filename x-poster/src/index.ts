@@ -67,7 +67,13 @@ async function tick(): Promise<void> {
   }
 
   try {
-    const result = await postTweet(handle.page, tweet.content, config, logger)
+    const result = await postTweet(
+      handle.page,
+      tweet.content,
+      tweet.mediaPath,
+      config,
+      logger,
+    )
 
     if (result.dryRun) {
       // A dry run proves nothing about delivery, so the row stays claimable.

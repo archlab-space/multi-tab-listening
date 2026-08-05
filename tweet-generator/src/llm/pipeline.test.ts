@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Candidate } from '../sources/candidates.js'
+import { LlmError, LlmUnavailableError } from './client.js'
 import { DEFAULT_BANNED_PHRASES } from './validate.js'
 import {
   generateTweet,
@@ -147,6 +148,46 @@ describe('generateTweet', () => {
 
     const result = await generateTweet(candidate, 'digest', deps(chat))
     expect(result.rounds).toBe(1)
+  })
+
+  it('propagates an outage instead of blaming the candidate', async () => {
+    // An unreachable model is not this candidate's fault. Burning its three
+    // rounds here would blacklist an innocent candidate for an
+    // infrastructure problem, and hide the outage from the service loop so
+    // the alert never fires.
+    const chat = vi
+      .fn()
+      .mockRejectedValue(new LlmUnavailableError('connection refused'))
+
+    await expect(generateTweet(candidate, 'digest', deps(chat))).rejects.toThrow(
+      LlmUnavailableError,
+    )
+    // One attempt, not three: it gave up as soon as it knew.
+    expect(chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('propagates an outage that strikes during the critique', async () => {
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(goodDraft)
+      .mockRejectedValueOnce(new LlmUnavailableError('connection refused'))
+
+    await expect(generateTweet(candidate, 'digest', deps(chat))).rejects.toThrow(
+      LlmUnavailableError,
+    )
+  })
+
+  it('still forgives an unusable reply from a reachable model', async () => {
+    // The distinction that matters: reachable-but-useless costs a round,
+    // unreachable costs nothing and stops immediately.
+    const chat = vi
+      .fn()
+      .mockRejectedValueOnce(new LlmError('The LLM returned no content'))
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(pass)
+
+    const result = await generateTweet(candidate, 'digest', deps(chat))
+    expect(result.rounds).toBe(2)
   })
 
   it('returns the draft alongside the text, for the card renderer', async () => {

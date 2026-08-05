@@ -1,10 +1,30 @@
 import type { LlmConfig } from '../config.js'
 
-/** Any failure talking to the model. The cycle is skipped; nothing is written. */
+/**
+ * The model replied, but with something unusable — unparseable JSON, or no
+ * object at all. This is the candidate's problem: the pipeline burns a round
+ * and asks again.
+ */
 export class LlmError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)
     this.name = 'LlmError'
+  }
+}
+
+/**
+ * The model could not be reached at all — connection refused, timeout, 5xx.
+ *
+ * Kept distinct from `LlmError` because the two demand opposite handling.
+ * Treating an outage as a bad reply would burn a candidate's three attempts
+ * on an infrastructure problem and blacklist it permanently for a reason
+ * that has nothing to do with it — and the loop would never learn the LLM is
+ * down, so the alert would never fire.
+ */
+export class LlmUnavailableError extends LlmError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'LlmUnavailableError'
   }
 }
 
@@ -52,16 +72,18 @@ export class LlmClient {
         },
       )
     } catch (cause) {
-      throw new LlmError('The LLM request failed', { cause })
+      throw new LlmUnavailableError('The LLM request failed', { cause })
     }
 
     if (!response.ok) {
-      throw new LlmError(`The LLM returned ${response.status}`)
+      throw new LlmUnavailableError(`The LLM returned ${response.status}`)
     }
 
     const body = (await response.json()) as ChatResponse
     const content = body.choices?.[0]?.message?.content
     if (!content) {
+      // Reachable but empty-handed. That is a reply, however useless, so it
+      // costs a round rather than counting as an outage.
       throw new LlmError('The LLM returned no content')
     }
     return content

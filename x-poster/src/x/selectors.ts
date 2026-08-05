@@ -36,6 +36,27 @@ export const selectors = {
    */
   submitButton: '[role="dialog"] [data-testid="tweetButton"]',
 
+  /**
+   * The composer's hidden file input.
+   *
+   * `setInputFiles` writes this directly. Clicking the visible media button
+   * instead opens a NATIVE OS file dialog in a real, non-headless Chrome;
+   * Playwright's filechooser interception is less reliable against a
+   * CDP-attached browser, and one missed interception leaves a modal system
+   * dialog blocking the session — on an unattended process, until someone
+   * notices.
+   */
+  fileInput: '[role="dialog"] input[type="file"][data-testid="fileInput"]',
+
+  /**
+   * Appears once an attachment has finished uploading and is previewable.
+   *
+   * X disables the submit button while an upload is in flight, so this is
+   * the signal that submitting is safe. Submitting early either posts
+   * without the image or throws.
+   */
+  mediaReady: '[role="dialog"] [data-testid="removeMedia"]',
+
   /** Any tweet in the timeline. Used to confirm the timeline rendered. */
   tweetArticle: 'article[data-testid="tweet"]',
 

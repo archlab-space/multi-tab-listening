@@ -1,7 +1,12 @@
 import type { TweetArchetype } from 'shared'
 import type { Candidate } from '../sources/candidates.js'
 import { assemble, type Draft } from './assemble.js'
-import { extractJson, LlmError, type ChatMessage } from './client.js'
+import {
+  extractJson,
+  LlmError,
+  LlmUnavailableError,
+  type ChatMessage,
+} from './client.js'
 import {
   buildCritiquePrompt,
   buildGeneratePrompt,
@@ -85,6 +90,8 @@ async function runCritique(
       issues: Array.isArray(parsed.issues) ? parsed.issues.map(String) : [],
     }
   } catch (error) {
+    // An outage still propagates. Only an unusable reply is forgiven.
+    if (error instanceof LlmUnavailableError) throw error
     if (!(error instanceof LlmError)) throw error
     return { verdict: 'pass', issues: [] }
   }
@@ -120,6 +127,10 @@ export async function generateTweet(
       draft = toDraft(archetype, extractJson<Record<string, unknown>>(reply))
       text = assemble(draft)
     } catch (error) {
+      // An unreachable model is not this candidate's fault. Letting it burn
+      // rounds here would blacklist innocent candidates during an outage and
+      // hide the outage from the loop, so the alert would never fire.
+      if (error instanceof LlmUnavailableError) throw error
       if (!(error instanceof LlmError)) throw error
       // A reply we could not parse is a failed round, not a crash. The next
       // round re-asks from scratch.
