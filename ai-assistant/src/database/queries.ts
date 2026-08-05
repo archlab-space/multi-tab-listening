@@ -1,54 +1,82 @@
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 import type { Pool } from 'pg'
 import type winston from 'winston'
 import { createLogger } from 'shared/logger'
-import { createPool } from 'shared/db'
+import { createDb, createPool } from 'shared/db'
+import { channels, messages } from 'shared/schema'
 import type { DiscordMessage, DiscordMessageRow } from '../types.js'
 import { config } from '../config.js'
 
+/**
+ * The columns every context query returns. Selected as a shared shape so the
+ * four strategies cannot drift from one another.
+ */
+const MESSAGE_FIELDS = {
+  messageId: messages.messageId,
+  channelId: messages.channelId,
+  guildId: messages.guildId,
+  authorId: messages.authorId,
+  authorName: messages.authorName,
+  content: messages.content,
+  timestamp: messages.timestamp,
+  replyToMessageId: messages.replyToMessageId,
+  threadId: messages.threadId,
+  rawData: messages.rawData,
+} as const
+
+/** The recency windows are numbers from config, not input. Postgres will not
+ *  take an interval as a bound parameter, so they are interpolated — as they
+ *  already were in the SQL strings this replaces. */
+function withinDays(days: number) {
+  return gt(messages.timestamp, sql`now() - ${sql.raw(`interval '${days} days'`)}`)
+}
+
 export class DatabaseQueries {
   private pool: Pool
+  private db: ReturnType<typeof createDb>
   private logger: winston.Logger
 
   constructor() {
     this.pool = createPool(config.database)
+    this.db = createDb(this.pool)
 
     this.logger = createLogger('ai-assistant.log')
   }
 
   async getUnprocessedMessages(limit: number = 50): Promise<DiscordMessage[]> {
-    const query = `
-      SELECT 
-        m.message_id, m.channel_id, m.guild_id, m.author_id, m.author_name, m.content, 
-        m.timestamp, m.reply_to_message_id, m.thread_id, m.raw_data,
-        c.channel_name, c.guild_name
-      FROM messages m
-      LEFT JOIN channels c ON m.channel_id = c.channel_id
-      WHERE m.processed = FALSE 
-        AND m.content IS NOT NULL 
-        AND m.content != ''
-      ORDER BY m.timestamp ASC 
-      LIMIT $1
-    `
-
     try {
-      const result = await this.pool.query(query, [limit])
-      return result.rows.map(
-        (row) =>
-          ({
-            messageId: row.message_id,
-            channelId: row.channel_id,
-            channelName: row.channel_name,
-            guildId: row.guild_id,
-            guildName: row.guild_name,
-            authorId: row.author_id,
-            authorName: row.author_name,
-            content: row.content,
-            timestamp: row.timestamp,
-            replyToMessageId: row.reply_to_message_id,
-            threadId: row.thread_id,
-            rawData: row.raw_data,
-          } as DiscordMessage),
-      )
+      const rows = await this.db
+        .select({
+          ...MESSAGE_FIELDS,
+          channelName: channels.channelName,
+          guildName: channels.guildName,
+        })
+        .from(messages)
+        .leftJoin(channels, eq(messages.channelId, channels.channelId))
+        .where(
+          and(
+            eq(messages.processed, false),
+            isNotNull(messages.content),
+            ne(messages.content, ''),
+          ),
+        )
+        .orderBy(asc(messages.timestamp))
+        .limit(limit)
+
+      return rows as DiscordMessage[]
     } catch (error) {
       this.logger.error('Error fetching unprocessed messages:', error)
       throw error
@@ -56,10 +84,11 @@ export class DatabaseQueries {
   }
 
   async markMessageAsProcessed(messageId: string): Promise<void> {
-    const query = 'UPDATE messages SET processed = TRUE WHERE message_id = $1'
-
     try {
-      await this.pool.query(query, [messageId])
+      await this.db
+        .update(messages)
+        .set({ processed: true })
+        .where(eq(messages.messageId, messageId))
     } catch (error) {
       this.logger.error('Error marking message as processed:', {
         messageId,
@@ -72,11 +101,11 @@ export class DatabaseQueries {
   async markMultipleMessagesAsProcessed(messageIds: string[]): Promise<void> {
     if (messageIds.length === 0) return
 
-    const query =
-      'UPDATE messages SET processed = TRUE WHERE message_id = ANY($1)'
-
     try {
-      await this.pool.query(query, [messageIds])
+      await this.db
+        .update(messages)
+        .set({ processed: true })
+        .where(inArray(messages.messageId, messageIds))
       this.logger.info(`Marked ${messageIds.length} messages as processed`)
     } catch (error) {
       this.logger.error('Error marking messages as processed:', {
@@ -93,19 +122,15 @@ export class DatabaseQueries {
     confidence: number,
     questionType?: string,
   ): Promise<void> {
-    const query = `
-      UPDATE messages 
-      SET is_question = $2, question_confidence = $3, question_type = $4
-      WHERE message_id = $1
-    `
-
     try {
-      await this.pool.query(query, [
-        messageId,
-        isQuestion,
-        confidence,
-        questionType,
-      ])
+      await this.db
+        .update(messages)
+        .set({
+          isQuestion,
+          questionConfidence: confidence,
+          questionType: questionType ?? null,
+        })
+        .where(eq(messages.messageId, messageId))
     } catch (error) {
       this.logger.error('Error updating question analysis:', {
         messageId,
@@ -119,29 +144,25 @@ export class DatabaseQueries {
     channelId?: string,
     limit: number = 50,
   ): Promise<DiscordMessageRow[]> {
-    let query = `
-      SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data
-      FROM messages 
-      WHERE is_question = TRUE 
-        AND content IS NOT NULL 
-        AND content != ''
-    `
-
-    const params: any[] = []
-
-    if (channelId) {
-      query += ' AND channel_id = $1'
-      params.push(channelId)
-    }
-
-    query += ` ORDER BY timestamp DESC LIMIT $${params.length + 1}`
-    params.push(limit)
-
     try {
-      const result = await this.pool.query(query, params)
-      return result.rows.map(this.mapRowToMessage)
+      // The old code appended ` AND channel_id = $1` to the SQL string and
+      // renumbered the placeholders by counting them. and() drops undefined
+      // members, so the optional filter is a list entry, not arithmetic.
+      const rows = await this.db
+        .select(MESSAGE_FIELDS)
+        .from(messages)
+        .where(
+          and(
+            eq(messages.isQuestion, true),
+            isNotNull(messages.content),
+            ne(messages.content, ''),
+            channelId ? eq(messages.channelId, channelId) : undefined,
+          ),
+        )
+        .orderBy(desc(messages.timestamp))
+        .limit(limit)
+
+      return rows as DiscordMessageRow[]
     } catch (error) {
       this.logger.error('Error fetching question messages:', {
         channelId,
@@ -203,30 +224,29 @@ export class DatabaseQueries {
     channelId: string,
     targetMessage: DiscordMessage,
   ): Promise<DiscordMessageRow[]> {
-    const query = `
-      SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data
-      FROM messages 
-      WHERE channel_id = $1 
-        AND (
-          thread_id = $2 OR 
-          message_id = $3 OR
-          reply_to_message_id = $3
-        )
-        AND content IS NOT NULL 
-        AND content != ''
-        AND processed = TRUE
-      ORDER BY timestamp ASC
-    `
+    const anchor = targetMessage.replyToMessageId || targetMessage.messageId
 
-    const result = await this.pool.query(query, [
-      channelId,
-      targetMessage.threadId,
-      targetMessage.replyToMessageId || targetMessage.messageId,
-    ])
+    const rows = await this.db
+      .select(MESSAGE_FIELDS)
+      .from(messages)
+      .where(
+        and(
+          eq(messages.channelId, channelId),
+          or(
+            targetMessage.threadId
+              ? eq(messages.threadId, targetMessage.threadId)
+              : undefined,
+            eq(messages.messageId, anchor),
+            eq(messages.replyToMessageId, anchor),
+          ),
+          isNotNull(messages.content),
+          ne(messages.content, ''),
+          eq(messages.processed, true),
+        ),
+      )
+      .orderBy(asc(messages.timestamp))
 
-    return result.rows.map(this.mapRowToMessage)
+    return rows as DiscordMessageRow[]
   }
 
   private async getKeywordRelevantMessages(
@@ -238,33 +258,36 @@ export class DatabaseQueries {
       return this.getRecentMessages(channelId, limit)
     }
 
-    // Use PostgreSQL full-text search with keyword weighting
+    // Use PostgreSQL full-text search with keyword weighting.
+    //
+    // The ' | ' is inert: plainto_tsquery parses its argument as plain text
+    // and ANDs every term it finds, so a message must contain every keyword.
+    // Reproduced as-is — see the characterization test that records it.
     const keywordPattern = keywords.join(' | ')
-
-    const query = `
-      SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data,
-        ts_rank(to_tsvector('english', content), plainto_tsquery('english', $2)) as relevance_score
-      FROM messages 
-      WHERE channel_id = $1 
-        AND content IS NOT NULL 
-        AND content != ''
-        AND processed = TRUE
-        AND (is_question IS NULL OR is_question = FALSE)
-        AND timestamp > NOW() - INTERVAL '${config.context.keywordSearchDays} days'
-        AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
-      ORDER BY relevance_score DESC, timestamp DESC
-      LIMIT $3
-    `
+    // Bound once and reused in the ORDER BY. The old code wrote the
+    // expression as a string and re-referenced it by alias, so the two could
+    // disagree.
+    const relevance = sql<number>`ts_rank(to_tsvector('english', ${messages.content}), plainto_tsquery('english', ${keywordPattern}))`
 
     try {
-      const result = await this.pool.query(query, [
-        channelId,
-        keywordPattern,
-        limit,
-      ])
-      return result.rows.map(this.mapRowToMessage)
+      const rows = await this.db
+        .select({ ...MESSAGE_FIELDS, relevanceScore: relevance })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.channelId, channelId),
+            isNotNull(messages.content),
+            ne(messages.content, ''),
+            eq(messages.processed, true),
+            or(isNull(messages.isQuestion), eq(messages.isQuestion, false)),
+            withinDays(config.context.keywordSearchDays),
+            sql`to_tsvector('english', ${messages.content}) @@ plainto_tsquery('english', ${keywordPattern})`,
+          ),
+        )
+        .orderBy(desc(relevance), desc(messages.timestamp))
+        .limit(limit)
+
+      return rows as DiscordMessageRow[]
     } catch (error) {
       // Fallback to simple keyword matching if full-text search fails
       this.logger.warn('Full-text search failed, using simple keyword matching')
@@ -281,55 +304,46 @@ export class DatabaseQueries {
       return this.getRecentMessages(channelId, limit)
     }
 
-    const keywordConditions = keywords
-      .map((_, index) => `content ILIKE $${index + 3}`)
-      .join(' OR ')
-    const keywordParams = keywords.map((k) => `%${k}%`)
+    const rows = await this.db
+      .select(MESSAGE_FIELDS)
+      .from(messages)
+      .where(
+        and(
+          eq(messages.channelId, channelId),
+          or(...keywords.map((k) => ilike(messages.content, `%${k}%`))),
+          isNotNull(messages.content),
+          ne(messages.content, ''),
+          eq(messages.processed, true),
+          or(isNull(messages.isQuestion), eq(messages.isQuestion, false)),
+          withinDays(config.context.keywordSearchDays),
+        ),
+      )
+      .orderBy(desc(messages.timestamp))
+      .limit(limit)
 
-    const query = `
-      SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data
-      FROM messages 
-      WHERE channel_id = $1 
-        AND (${keywordConditions})
-        AND content IS NOT NULL 
-        AND content != ''
-        AND processed = TRUE
-        AND (is_question IS NULL OR is_question = FALSE)
-        AND timestamp > NOW() - INTERVAL '${config.context.keywordSearchDays} days'
-      ORDER BY timestamp DESC
-      LIMIT $2
-    `
-
-    const result = await this.pool.query(query, [
-      channelId,
-      limit,
-      ...keywordParams,
-    ])
-    return result.rows.map(this.mapRowToMessage)
+    return rows as DiscordMessageRow[]
   }
 
   private async getRecentMessages(
     channelId: string,
     limit: number,
   ): Promise<DiscordMessageRow[]> {
-    const query = `
-      SELECT 
-        message_id, channel_id, guild_id, author_id, author_name, content, 
-        timestamp, reply_to_message_id, thread_id, raw_data
-      FROM messages 
-      WHERE channel_id = $1 
-        AND content IS NOT NULL 
-        AND content != ''
-        AND processed = TRUE
-        AND timestamp > NOW() - INTERVAL '${config.context.fallbackSearchDays} days'
-      ORDER BY timestamp DESC 
-      LIMIT $2
-    `
+    const rows = await this.db
+      .select(MESSAGE_FIELDS)
+      .from(messages)
+      .where(
+        and(
+          eq(messages.channelId, channelId),
+          isNotNull(messages.content),
+          ne(messages.content, ''),
+          eq(messages.processed, true),
+          withinDays(config.context.fallbackSearchDays),
+        ),
+      )
+      .orderBy(desc(messages.timestamp))
+      .limit(limit)
 
-    const result = await this.pool.query(query, [channelId, limit])
-    return result.rows.map(this.mapRowToMessage)
+    return rows as DiscordMessageRow[]
   }
 
   private combineAndRankMessages(
@@ -419,19 +433,6 @@ export class DatabaseQueries {
 
     return Math.min(score, 50) // Cap at 50 points
   }
-
-  private mapRowToMessage = (row: any): DiscordMessageRow => ({
-    messageId: row.message_id,
-    channelId: row.channel_id,
-    guildId: row.guild_id,
-    authorId: row.author_id,
-    authorName: row.author_name,
-    content: row.content,
-    timestamp: row.timestamp,
-    replyToMessageId: row.reply_to_message_id,
-    threadId: row.thread_id,
-    rawData: row.raw_data,
-  })
 
   async close(): Promise<void> {
     await this.pool.end()
