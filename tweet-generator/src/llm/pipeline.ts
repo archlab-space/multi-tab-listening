@@ -118,6 +118,8 @@ export async function generateTweet(
   let prompt = buildGeneratePrompt(candidate, archetype)
   let previousRules = new Set<string>()
   let lastViolations: string[] = ['no draft was produced']
+  /** The critic's single veto, spent the first time it asks for a revision. */
+  let critiqueSpent = false
 
   for (let round = 1; round <= deps.maxRounds; round++) {
     let draft: Draft
@@ -151,8 +153,29 @@ export async function generateTweet(
     if (!result.ok) {
       lastViolations = result.hard.map((violation) => violation.message)
       previousRules = new Set(result.hard.map((violation) => violation.rule))
-      prompt = buildRewritePrompt(text, lastViolations)
+      prompt = buildRewritePrompt(candidate, archetype, draft, lastViolations)
       continue
+    }
+
+    // The critic gets exactly one veto.
+    //
+    // Asked to critique, a model always finds something: across 48 real
+    // rounds on two unrelated models it never once returned "pass", and the
+    // issue count per round stayed flat or rose. An unbounded critic is
+    // therefore not a quality gate, it is a guarantee of zero output.
+    //
+    // One veto keeps what the critic is actually good at — catching the
+    // obvious miss on the first draft — while honouring the rule the rest of
+    // this file already follows: a draft that has cleared the deterministic
+    // gate is publishable, and trading it for nothing is the worse outcome.
+    //
+    // The same reasoning caps it on the final round, where a veto cannot be
+    // acted on at all: there is no round left to rewrite in, so asking can
+    // only throw away a draft that has already cleared every hard gate. A
+    // digest that spends rounds 1 and 2 on the highlight budget lands here
+    // every time.
+    if (critiqueSpent || round === deps.maxRounds) {
+      return { text, draft, rounds: round }
     }
 
     const critique = await runCritique(
@@ -166,9 +189,10 @@ export async function generateTweet(
       return { text, draft, rounds: round }
     }
 
+    critiqueSpent = true
     lastViolations = critique.issues
     previousRules = new Set()
-    prompt = buildRewritePrompt(text, critique.issues)
+    prompt = buildRewritePrompt(candidate, archetype, draft, critique.issues)
   }
 
   throw new GenerationGaveUp(

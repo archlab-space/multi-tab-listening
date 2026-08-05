@@ -85,6 +85,91 @@ describe('generateTweet', () => {
     expect(rewritePrompt).toContain('the hook does not say what it replaces')
   })
 
+  it('gives the rewrite everything a fresh call needs to answer', async () => {
+    // A chat call carries no history, so a rewrite that only names the issues
+    // leaves the model guessing at the schema. It guesses wrong, the draft
+    // parses to empty fields, and every candidate needing a second round is
+    // lost. The prompt has to restate the shape and the material.
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(revise)
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(pass)
+
+    await generateTweet(candidate, 'digest', deps(chat))
+
+    const rewritePrompt = JSON.stringify(chat.mock.calls[2]![0])
+    expect(rewritePrompt).toContain('highlights')
+    expect(rewritePrompt).toContain('290 providers and 500 models')
+    expect(rewritePrompt).toContain('One endpoint, 290 providers.')
+  })
+
+  it('rewrites a validation failure against the same full brief', async () => {
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(badNumberDraft)
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(pass)
+
+    await generateTweet(candidate, 'digest', deps(chat))
+
+    const rewritePrompt = JSON.stringify(chat.mock.calls[1]![0])
+    expect(rewritePrompt).toContain('highlights')
+    expect(rewritePrompt).toContain('290 providers and 500 models')
+    expect(rewritePrompt).toContain('93%')
+  })
+
+  it('ships a revised draft that clears validation without re-consulting the critic', async () => {
+    // Asked to critique, a model always finds something — across 48 real
+    // rounds on two unrelated models the critic never once returned "pass".
+    // One veto is what keeps it a quality gate rather than a zero-output
+    // guarantee.
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(revise)
+      .mockResolvedValueOnce(goodDraft)
+
+    const result = await generateTweet(candidate, 'digest', deps(chat))
+
+    expect(result.rounds).toBe(2)
+    // Generate, critique, rewrite. No fourth call: the veto was spent.
+    expect(chat).toHaveBeenCalledTimes(3)
+  })
+
+  it('still enforces every hard rule after the critic has been overruled', async () => {
+    // Only the critic is capped. The deterministic gate is not: a rewrite
+    // that invents a number must not ship just because the veto is spent.
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(goodDraft)
+      .mockResolvedValueOnce(revise)
+      .mockResolvedValueOnce(badNumberDraft)
+      .mockResolvedValueOnce(goodDraft)
+
+    const result = await generateTweet(candidate, 'digest', deps(chat))
+
+    expect(result.rounds).toBe(3)
+    expect(result.text).not.toContain('93%')
+  })
+
+  it('does not spend a veto on the final round, where it cannot be acted on', async () => {
+    // A digest that burns rounds 1 and 2 on the highlight budget reaches a
+    // clean draft only on the last round. Asking the critic there can only
+    // discard it — there is no round left to rewrite in.
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce(badNumberDraft)
+      .mockResolvedValueOnce(badNumberDraft)
+      .mockResolvedValueOnce(goodDraft)
+
+    const result = await generateTweet(candidate, 'digest', deps(chat))
+
+    expect(result.rounds).toBe(3)
+    expect(chat).toHaveBeenCalledTimes(3)
+  })
+
   it('gives up after maxRounds and reports what was still wrong', async () => {
     const chat = vi.fn().mockResolvedValue(badNumberDraft)
 

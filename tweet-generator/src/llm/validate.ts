@@ -131,8 +131,16 @@ function checkBudgets(draft: Draft): Violation[] {
   return violations
 }
 
-/** Numbers as written, with an optional unit: `87%`, `18.4k`, `4x`, `290`. */
-const NUMBER_PATTERN = /\d[\d,.]*\s*(%|k|m|b|x)?/gi
+/**
+ * Numbers as written, with an optional unit: `87%`, `18.4k`, `4x`, `290`.
+ *
+ * Two things are deliberate. The unit must be adjacent — allowing whitespace
+ * before it made "…16, but…" match as the token "16, b", which no source can
+ * contain, so the draft was rejected for a number it never claimed. And every
+ * separator must be followed by a digit, so a sentence-final "0.6.3." yields
+ * "0.6.3" rather than dragging the full stop in with it.
+ */
+const NUMBER_PATTERN = /\d+(?:[.,]\d+)*(%|k|m|b|x)?/gi
 
 function normalise(text: string): string {
   return text.toLowerCase().replace(/,/g, '').replace(/\s+/g, '')

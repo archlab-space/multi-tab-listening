@@ -123,6 +123,27 @@ describe('validate — the number whitelist', () => {
     )
   })
 
+  it('does not run a number into the next word looking for a unit', () => {
+    // "…16, but…" once matched as the token "16, b", which no source can
+    // contain, so a draft was rejected for a claim it never made.
+    const draft: Draft = {
+      archetype: 'take',
+      text: 'It ships 290 providers, but only 500 models are routed.',
+    }
+    expect(validate(input({ draft })).hard).toEqual([])
+  })
+
+  it('leaves sentence punctuation out of the token', () => {
+    const draft: Draft = {
+      archetype: 'take',
+      text: 'The pinned release is 0.6.3.',
+    }
+    const result = validate(
+      input({ draft, sourceText: 'Pinned at version 0.6.3 for now.' }),
+    )
+    expect(result.hard).toEqual([])
+  })
+
   it('checks against the whole source, not only the facts list', () => {
     // Scoping this to facts[] would reject model names and version strings —
     // LFM2.5-2.6B, GPT-5.6, v2 — which are quoted, not invented.
