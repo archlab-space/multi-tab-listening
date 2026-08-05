@@ -1,4 +1,5 @@
 import { createPool } from 'shared/db'
+import { formatError } from 'shared/errors'
 import { createLogger } from 'shared/logger'
 import { notifyFailure } from 'shared/notifier'
 import { mulberry32, type Rng } from 'shared/rng'
@@ -226,7 +227,7 @@ async function main(): Promise<void> {
       await tick()
       consecutiveSourceFailures = 0
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = formatError(error)
 
       if (error instanceof AgentLensError || error instanceof LlmError) {
         consecutiveSourceFailures += 1
@@ -255,7 +256,8 @@ async function main(): Promise<void> {
 }
 
 main().catch(async (error) => {
-  logger.error('Unrecoverable startup failure', { error: String(error) })
-  await notifyFailure(config.discordWebhookUrl, 'tweet-generator', String(error))
+  const message = formatError(error)
+  logger.error('Unrecoverable startup failure', { error: message })
+  await notifyFailure(config.discordWebhookUrl, 'tweet-generator', message)
   await shutdown('startup failure', 1)
 })

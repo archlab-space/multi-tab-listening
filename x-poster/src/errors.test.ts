@@ -30,6 +30,31 @@ describe('classifyError', () => {
     ).toBeInstanceOf(RetryableError)
   })
 
+  /**
+   * What `pg` throws when the database is not running: the refusals for both
+   * addresses `localhost` resolves to, wrapped in an AggregateError whose own
+   * message is empty. Classifying on `message` alone found no ECONNREFUSED
+   * and broke the circuit on what is only the database being down.
+   */
+  it('treats a refusal buried in an AggregateError as retryable', () => {
+    const error = Object.assign(
+      new AggregateError(
+        [
+          new Error('connect ECONNREFUSED ::1:5432'),
+          new Error('connect ECONNREFUSED 127.0.0.1:5432'),
+        ],
+        '',
+      ),
+      { code: 'ECONNREFUSED' },
+    )
+    expect(classifyError(error)).toBeInstanceOf(RetryableError)
+  })
+
+  it('carries the buried detail into the message it reports', () => {
+    const error = Object.assign(new Error(''), { code: 'ETIMEDOUT' })
+    expect(classifyError(error).message).toContain('ETIMEDOUT')
+  })
+
   it('defaults an unrecognised error to fatal', () => {
     expect(
       classifyError(new Error('something nobody anticipated')),

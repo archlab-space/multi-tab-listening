@@ -7,6 +7,7 @@
     ".": "./src/types.ts",
     "./logger": "./src/logger.ts",
     "./db": "./src/db.ts",
+    "./errors": "./src/errors.ts",
     "./notifier": "./src/notifier.ts",
     "./rng": "./src/rng.ts"
   },

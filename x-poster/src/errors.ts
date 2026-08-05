@@ -3,6 +3,8 @@
  * The category, not the message, decides what happens next.
  */
 
+import { formatError } from 'shared/errors'
+
 /** Transient. Back off and try again, up to the configured attempt limit. */
 export class RetryableError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -62,7 +64,12 @@ export function classifyError(
     return error
   }
 
-  const message = error instanceof Error ? error.message : String(error)
+  // `formatError`, not `error.message`: the patterns below match on text, and
+  // the errors that matter most here keep their code outside the message. A
+  // database that is not running arrives as an AggregateError with an empty
+  // message, which matched nothing and was classified fatal — breaking the
+  // circuit over something that only needed the next attempt.
+  const message = formatError(error)
   const name = error instanceof Error ? error.name : ''
 
   if (
