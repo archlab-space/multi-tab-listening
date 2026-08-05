@@ -3,6 +3,7 @@ packages:
   - discord-monitor
   - ai-assistant
   - x-poster
+  - tweet-generator
 
 # Shared across the packages — bump here, not in each package.json.
 catalog:

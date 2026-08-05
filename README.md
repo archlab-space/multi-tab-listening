@@ -10,10 +10,11 @@ A browser-automation tool that monitors multiple Discord channels simultaneously
 
 ## Overview
 
-This project has three independently running modules:
+This project has four independently running modules:
 
 - **Discord Monitor** — opens one browser tab per Discord channel using Playwright, injects a `MutationObserver` script to capture new messages in real time, filters noise, and stores everything in PostgreSQL.
 - **AI Assistant** — polls the database for unprocessed messages, calls the Fireworks AI API to detect whether each message is a question (≥70% confidence threshold), retrieves relevant context from message history, generates an answer, and pushes both to a Discord channel via Webhook.
+- **Tweet Generator** — pulls AI-industry dispatches from the AgentLens public API, writes each one up through a pinned local LLM, renders a card image, and enqueues the result for the X Poster to drain.
 - **X Poster** — drains a queue of pending tweets from the database and posts each one through a real Chrome browser driven over CDP, pacing the interaction so it reads as human.
 
 ## Architecture
@@ -24,6 +25,8 @@ flowchart LR
     B -->|store| C[("PostgreSQL\n+ pgvector")]
     C -->|poll| D["AI Assistant\n(Fireworks AI)"]
     D -->|"question detected"| E["Discord Webhook\n(Q&A notification)"]
+    H["AgentLens API"] --> I["Tweet Generator\n(pinned local LLM)"]
+    I -->|"enqueue tweet"| C
     C -->|"claim pending tweet"| F["X Poster\n(real Chrome via CDP)"]
     F -->|post| G["x.com"]
 ```
@@ -37,6 +40,9 @@ flowchart LR
 - Automatic answer generation with context retrieval from recent message history
 - pgvector column on messages table, ready for semantic search
 - Queue-driven X posting through a real Chrome, with human-like pacing, a dry-run mode, and a circuit breaker that stops on an expired session rather than hammering the account
+- Tweets written from AgentLens dispatches by a pinned local LLM, gated by a deterministic validator (character budget, two tiers of banned phrase, and a whitelist that rejects any number not present in the source material)
+- Four post shapes with two card designs, mixed so the timeline does not read as a content farm — half the posts carry no image at all
+- Card images rendered from HTML in a throwaway headless Chromium, with embedded fonts so a container and a laptop produce the same pixels
 
 ## Quick Start
 
@@ -73,7 +79,22 @@ pnpm --filter ai-assistant start
 #    X_DRY_RUN defaults to true, so it runs the full script without posting.
 cp x-poster/.env.example x-poster/.env
 pnpm --filter x-poster start
+
+# 9. In a fourth terminal, start the tweet generator.
+#    LLM_MODEL is required and must name one model — "auto" is rejected.
+cp tweet-generator/.env.example tweet-generator/.env
+pnpm --filter tweet-generator start
 ```
+
+The tweet generator needs a local OpenAI-compatible endpoint. With OmniRoute:
+
+- **Pin `LLM_MODEL` to one model.** `auto` is rejected by the config loader — it
+  falls back across four provider tiers, so the same prompt is served by a
+  frontier model one day and a free tier-4 model the next, and these posts go
+  out unattended.
+- **Disable prompt compression (RTK / Caveman) on this route.** The prompts
+  carry a banned-phrase list and a hard character budget: material whose exact
+  wording is the point.
 
 The Discord monitor will open a Chromium window. Log in to Discord manually on the first run — Playwright saves the session to `discord-session.json` so you only need to do this once.
 
@@ -183,6 +204,32 @@ multi-tab-listening/
 │   │   │   ├── tweet-queue.ts      # SKIP LOCKED claiming + state machine
 │   │   │   └── rate-limiter.ts     # Active hours, daily cap, interval
 │   │   └── errors.ts               # Retryable / Fatal / Uncertain
+│   └── .env.example
+├── tweet-generator/            # Fills the queue from AgentLens + a local LLM
+│   ├── src/
+│   │   ├── sources/
+│   │   │   ├── agentlens.ts        # Every AgentLens wire shape, in one place
+│   │   │   └── candidates.ts       # Five sources -> one Candidate
+│   │   ├── select/
+│   │   │   ├── clock.ts            # Day boundaries in a named timezone
+│   │   │   ├── quota.ts            # Remaining-ratio picker + 09:00 anchor
+│   │   │   ├── dedupe.ts           # Star buckets for repostable projects
+│   │   │   ├── windows.ts          # Per-source freshness, set by staleness
+│   │   │   ├── niche.ts            # Crypto/business gate, before any LLM call
+│   │   │   └── pool.ts             # Candidate selection per source kind
+│   │   ├── llm/
+│   │   │   ├── client.ts           # OpenAI-compatible chat + lenient JSON
+│   │   │   ├── archetypes.ts       # Four post shapes, never twice in a row
+│   │   │   ├── assemble.ts         # Fields -> tweet, X weighted length
+│   │   │   ├── validate.ts         # The deterministic gate
+│   │   │   ├── prompts.ts          # Persona, generate, critique, rewrite
+│   │   │   └── pipeline.ts         # Generate -> validate -> critique -> rewrite
+│   │   ├── image/
+│   │   │   ├── template.ts         # Card HTML, embedded fonts, watermark
+│   │   │   ├── fonts.ts            # Generated by scripts/embed-fonts.mjs
+│   │   │   └── render.ts           # Throwaway headless Chromium screenshot
+│   │   └── store.ts                # Every SQL statement this service issues
+│   ├── banned-phrases.json     # Two tiers, editable without a code change
 │   └── .env.example
 ├── pnpm-workspace.yaml         # Workspace members + shared dependency catalog
 └── docker-compose.yml          # PostgreSQL + pgvector

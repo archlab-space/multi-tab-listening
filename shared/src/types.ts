@@ -48,6 +48,15 @@ export type TweetStatus =
   | 'failed'
   | 'uncertain'
 
+/**
+ * The shape a tweet takes.
+ *
+ * Chosen by the generator and stored, because the "never the same archetype
+ * twice in a row" rule has to survive a process restart — it cannot be held
+ * in memory.
+ */
+export type TweetArchetype = 'digest' | 'metric' | 'take' | 'question'
+
 /** One row of the `tweets` table. */
 export interface Tweet {
   id: number
@@ -61,6 +70,9 @@ export interface Tweet {
   dedupeKey: string
   source: string | null
   sourceRef: string | null
+  /** Path to the card image, if this tweet has one. */
+  mediaPath: string | null
+  archetype: TweetArchetype | null
   attempts: number
   lastError: string | null
   scheduledAt: Date

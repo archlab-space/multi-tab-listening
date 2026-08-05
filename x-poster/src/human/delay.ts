@@ -1,19 +1,9 @@
-export type Rng = () => number
+// The PRNG now lives in `shared`, since a second service needs it too. It is
+// re-exported here so the existing `from '../human/delay.js'` imports across
+// this package keep working.
+import type { Rng } from 'shared/rng'
 
-/**
- * Small seeded PRNG. Exported so the randomised behaviour in this package is
- * reproducible under test — every module that takes an `rng` accepts this.
- */
-export function mulberry32(seed: number): Rng {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+export { mulberry32, type Rng } from 'shared/rng'
 
 /** Box-Muller transform: two uniforms in, one standard normal out. */
 function standardNormal(rng: Rng): number {

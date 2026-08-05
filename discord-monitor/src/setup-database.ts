@@ -83,6 +83,27 @@ export const setupDatabase = async () => {
       )
     `)
 
+    // Added after the tweets table shipped, so these run as ALTERs rather
+    // than being folded into the CREATE above — an existing database would
+    // never see a changed CREATE TABLE IF NOT EXISTS.
+    await client.query(`
+      ALTER TABLE tweets ADD COLUMN IF NOT EXISTS media_path TEXT;
+      ALTER TABLE tweets ADD COLUMN IF NOT EXISTS archetype VARCHAR(20);
+    `)
+
+    // One row per candidate the tweet-generator has tried and failed to write
+    // up. Without it a candidate the model cannot handle sits at the top of
+    // its pool and consumes every slot that source has, every cycle, until it
+    // ages out of the freshness window.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS generation_attempts (
+        external_id VARCHAR(255) PRIMARY KEY,
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        last_error  TEXT,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+
     // Create indexes for performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);

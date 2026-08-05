@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import type { Locator, Page } from 'playwright'
 import type winston from 'winston'
 import type { XPosterConfig } from '../config.js'
-import { FatalError, UncertainError } from '../errors.js'
+import { FatalError, RetryableError, UncertainError } from '../errors.js'
 import { withClipboard } from '../human/clipboard.js'
 import { humanDelay, sampleDelay } from '../human/delay.js'
 import { elementCentre, travelTo, type Point } from '../human/mouse.js'
@@ -61,6 +61,7 @@ async function browseTimeline(page: Page, logger: winston.Logger): Promise<void>
 export async function postTweet(
   page: Page,
   content: string,
+  mediaPath: string | null,
   config: XPosterConfig,
   logger: winston.Logger,
 ): Promise<PostResult> {
@@ -106,6 +107,32 @@ export async function postTweet(
       'The pasted text did not appear in the composer. The clipboard paste ' +
         'may have been blocked, or the editor selector is out of date.',
     )
+  }
+
+  // 4b. Attach the card, if this tweet has one.
+  if (mediaPath) {
+    await page.locator(selectors.fileInput).first().setInputFiles(mediaPath)
+
+    try {
+      await page
+        .locator(selectors.mediaReady)
+        .first()
+        .waitFor({ state: 'visible', timeout: 60_000 })
+    } catch (error) {
+      // Submit has not been clicked, so the tweet definitively did not post
+      // and retrying is safe. Classifying this as uncertain would strand a
+      // healthy tweet awaiting manual review.
+      throw new RetryableError(
+        `The image at ${mediaPath} never finished uploading`,
+        { cause: error },
+      )
+    }
+
+    // The preview appearing and the upload being committed are not quite the
+    // same instant, and this is also just what a person does after attaching
+    // something.
+    await humanDelay(900, 2400)
+    logger.debug('Attached media', { mediaPath })
   }
 
   // 5. Re-read it, the way a person does before posting.
