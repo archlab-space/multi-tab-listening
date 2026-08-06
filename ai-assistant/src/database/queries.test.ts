@@ -232,21 +232,19 @@ describe('getRelatedMessages', () => {
   })
 
   /**
-   * Recorded because it is surprising, not because it is wanted.
-   *
-   * getKeywordRelevantMessages joins the keywords with ' | ' and hands the
-   * result to plainto_tsquery, which parses its argument as plain text —
-   * operators and all — and ANDs every term it finds:
+   * A message matching one keyword is context; the query used to discard it.
+   * The keywords were joined into a single ' | '-separated string and handed
+   * to plainto_tsquery, which parses its argument as plain text — operators
+   * and all — and ANDs every term it finds:
    *
    *   plainto_tsquery('english', 'kubernetes | orchestration')
    *     => 'kubernet' & 'orchestr'
    *
-   * So the separators are inert and a message must contain *every* keyword,
-   * not any of them. to_tsquery would honour the '|'; plainto_tsquery does
-   * not. Changing that is a behaviour change, and this rewrite is not it —
-   * but the next person to touch this query should know before they start.
+   * Each keyword now gets its own plainto_tsquery and the results are ORed
+   * with the tsquery `||` operator, so the OR is real. Ranking still favours
+   * the message that matches more of them.
    */
-  it('requires every keyword, despite the OR separators', async () => {
+  it('accepts a message matching any keyword, best match first', async () => {
     await seed({
       id: `${P}both`,
       content: 'kubernetes and orchestration together',
@@ -268,7 +266,30 @@ describe('getRelatedMessages', () => {
     )
     const ours = found.filter((m) => m.messageId.startsWith(P))
 
-    expect(ours.map((m) => m.messageId)).toEqual([`${P}both`])
+    expect(ours.map((m) => m.messageId)).toEqual([`${P}both`, `${P}one`])
+  })
+
+  /**
+   * Composing the query per keyword keeps every term inside plainto_tsquery,
+   * which treats operators as text. to_tsquery over a hand-built string would
+   * have to escape them or throw on the malformed ones.
+   */
+  it('treats tsquery operators in the question as text', async () => {
+    await seed({
+      id: `${P}op`,
+      content: 'kubernetes notes',
+      processed: true,
+      isQuestion: false,
+      timestamp: new Date(),
+    })
+
+    const found = await queries.getRelatedMessages(
+      `${P}c1`,
+      'kubernetes & !(orchestration <-> :*',
+    )
+    const ours = found.filter((m) => m.messageId.startsWith(P))
+
+    expect(ours.map((m) => m.messageId)).toEqual([`${P}op`])
   })
 
   it('puts thread context ahead of keyword matches', async () => {

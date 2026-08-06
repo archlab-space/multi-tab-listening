@@ -260,14 +260,24 @@ export class DatabaseQueries {
 
     // Use PostgreSQL full-text search with keyword weighting.
     //
-    // The ' | ' is inert: plainto_tsquery parses its argument as plain text
-    // and ANDs every term it finds, so a message must contain every keyword.
-    // Reproduced as-is — see the characterization test that records it.
-    const keywordPattern = keywords.join(' | ')
+    // One plainto_tsquery per keyword, ORed with the tsquery `||` operator.
+    // Joining the keywords into a single ' | ' string instead would not OR
+    // anything: plainto_tsquery reads its argument as plain text, drops the
+    // separators as noise and ANDs the rest, which required a message to
+    // contain every keyword. Building the string for to_tsquery would OR
+    // correctly but puts unescaped user text where operators are parsed;
+    // composing per keyword keeps each term inside plainto_tsquery, so
+    // operators stay text. A keyword that stems to nothing yields an empty
+    // tsquery, and `||` drops it rather than poisoning the rest.
+    const keywordQuery = sql.join(
+      keywords.map((keyword) => sql`plainto_tsquery('english', ${keyword})`),
+      sql` || `,
+    )
     // Bound once and reused in the ORDER BY. The old code wrote the
     // expression as a string and re-referenced it by alias, so the two could
-    // disagree.
-    const relevance = sql<number>`ts_rank(to_tsvector('english', ${messages.content}), plainto_tsquery('english', ${keywordPattern}))`
+    // disagree. ts_rank still scores a message matching more keywords higher,
+    // so the best matches lead even though one keyword is now enough.
+    const relevance = sql<number>`ts_rank(to_tsvector('english', ${messages.content}), ${keywordQuery})`
 
     try {
       const rows = await this.db
@@ -281,7 +291,7 @@ export class DatabaseQueries {
             eq(messages.processed, true),
             or(isNull(messages.isQuestion), eq(messages.isQuestion, false)),
             withinDays(config.context.keywordSearchDays),
-            sql`to_tsvector('english', ${messages.content}) @@ plainto_tsquery('english', ${keywordPattern})`,
+            sql`to_tsvector('english', ${messages.content}) @@ (${keywordQuery})`,
           ),
         )
         .orderBy(desc(relevance), desc(messages.timestamp))
