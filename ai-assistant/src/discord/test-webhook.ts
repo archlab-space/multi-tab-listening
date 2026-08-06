@@ -25,6 +25,7 @@ async function testWebhook() {
 
     const mockAnalysis: QuestionAnalysis = {
       message: {
+        source: 'discord',
         messageId: '1405242049594396693',
         guildId: '1287736665103798433',
         guildName: 'Test Guild',

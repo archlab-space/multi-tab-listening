@@ -43,6 +43,7 @@ export type TweetArchetype = NonNullable<Tweet['archetype']>
  */
 export type DiscordMessage = Pick<
   typeof messages.$inferSelect,
+  | 'source'
   | 'messageId'
   | 'channelId'
   | 'guildId'

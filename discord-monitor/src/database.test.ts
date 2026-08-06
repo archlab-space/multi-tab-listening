@@ -29,7 +29,9 @@ afterAll(async () => {
   await pool.end()
 })
 
-function aMessage(overrides: Partial<DiscordMessage> = {}): DiscordMessage {
+function aMessage(
+  overrides: Partial<Omit<DiscordMessage, 'source'>> = {},
+): Omit<DiscordMessage, 'source'> {
   return {
     messageId: `${P}m1`,
     channelId: `${P}c1`,
@@ -40,7 +42,7 @@ function aMessage(overrides: Partial<DiscordMessage> = {}): DiscordMessage {
     timestamp: new Date('2026-01-01T00:00:00Z'),
     rawData: { a: 1 },
     ...overrides,
-  } as DiscordMessage
+  } as Omit<DiscordMessage, 'source'>
 }
 
 describe('insertChannel', () => {
@@ -112,6 +114,38 @@ describe('insertMessage', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].content).toBe('hello world')
   })
+
+  /**
+   * The point of the source column. `message_id` alone used to be UNIQUE, so a
+   * second source reusing an id Discord had already taken was swallowed by
+   * `onConflictDoNothing` — no row, no error. The constraint is now
+   * (source, message_id).
+   *
+   * The second source is written through `pool.query` rather than the writer:
+   * the enum constrains TypeScript, while the column is a plain varchar in
+   * Postgres, so no test-only enum member is needed.
+   */
+  it('keeps two sources that share a message id apart', async () => {
+    await db.insertMessage(aMessage({ content: 'from discord' }))
+
+    await pool.query(
+      `INSERT INTO messages
+         (source, message_id, channel_id, guild_id, author_id, author_name,
+          content, timestamp, raw_data)
+       VALUES ('slack', $1, $2, $3, 'author-1', 'Author One',
+               'from slack', now(), '{}'::jsonb)`,
+      [`${P}m1`, `${P}c1`, `${P}g1`],
+    )
+
+    const { rows } = await pool.query(
+      'SELECT source, content FROM messages WHERE message_id = $1 ORDER BY source',
+      [`${P}m1`],
+    )
+    expect(rows).toEqual([
+      { source: 'discord', content: 'from discord' },
+      { source: 'slack', content: 'from slack' },
+    ])
+  })
 })
 
 describe('insertThread', () => {
@@ -154,6 +188,7 @@ describe('getMessagesByChannel', () => {
 
     expect(found.map((m) => m.messageId)).toEqual([`${P}new`, `${P}old`])
     expect(found[0]).toEqual({
+      source: 'discord',
       messageId: `${P}new`,
       channelId: `${P}c1`,
       guildId: `${P}g1`,

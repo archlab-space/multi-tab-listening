@@ -15,6 +15,13 @@
       "when": 1785977308664,
       "tag": "0001_message_columns_not_null",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785978941350,
+      "tag": "0002_message_source",
+      "breakpoints": true
     }
   ]
 }

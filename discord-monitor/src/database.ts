@@ -22,13 +22,14 @@ export class Database {
       await this.db
         .insert(channels)
         .values({
+          source: 'discord',
           channelId: channel.channelId,
           channelName: channel.channelName,
           guildId: channel.guildId,
           guildName: channel.guildName,
         })
         .onConflictDoUpdate({
-          target: channels.channelId,
+          target: [channels.source, channels.channelId],
           set: {
             channelName: channel.channelName,
             guildId: channel.guildId,
@@ -41,14 +42,19 @@ export class Database {
     }
   }
 
+  /**
+   * The adapter stamps its own source rather than accepting one, so a caller
+   * cannot mislabel a row and the scraper never has to know the column exists.
+   */
   async insertMessage(
-    message: DiscordMessage,
+    message: Omit<DiscordMessage, 'source'>,
     isFiltered: boolean = false,
   ): Promise<void> {
     try {
       await this.db
         .insert(messages)
         .values({
+          source: 'discord',
           messageId: message.messageId,
           channelId: message.channelId,
           guildId: message.guildId,
@@ -65,7 +71,7 @@ export class Database {
           // keeping the stringify here would encode it twice.
           rawData: message.rawData,
         })
-        .onConflictDoNothing({ target: messages.messageId })
+        .onConflictDoNothing({ target: [messages.source, messages.messageId] })
     } catch (error) {
       this.logger.error('Error inserting message:', error)
       throw error
@@ -77,11 +83,12 @@ export class Database {
       await this.db
         .insert(threads)
         .values({
+          source: 'discord',
           threadId: thread.threadId,
           originalMessageId: thread.originalMessageId,
           channelId: thread.channelId,
         })
-        .onConflictDoNothing({ target: threads.threadId })
+        .onConflictDoNothing({ target: [threads.source, threads.threadId] })
     } catch (error) {
       this.logger.error('Error inserting thread:', error)
       throw error
@@ -95,6 +102,7 @@ export class Database {
     try {
       const rows = await this.db
         .select({
+          source: messages.source,
           messageId: messages.messageId,
           channelId: messages.channelId,
           guildId: messages.guildId,
@@ -129,6 +137,7 @@ export class Database {
 
       const rows = await this.db
         .select({
+          source: messages.source,
           messageId: messages.messageId,
           channelId: messages.channelId,
           guildId: messages.guildId,

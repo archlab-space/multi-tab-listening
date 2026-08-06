@@ -30,10 +30,11 @@ interface SeedMessage {
 async function seed(message: SeedMessage): Promise<void> {
   await pool.query(
     `INSERT INTO messages
-       (message_id, channel_id, guild_id, author_id, author_name, content,
-        timestamp, reply_to_message_id, thread_id, raw_data, processed,
-        is_question)
-     VALUES ($1, $2, $3, 'a1', 'Author', $4, $5, $6, $7, '{}'::jsonb, $8, $9)`,
+       (source, message_id, channel_id, guild_id, author_id, author_name,
+        content, timestamp, reply_to_message_id, thread_id, raw_data,
+        processed, is_question)
+     VALUES ('discord', $1, $2, $3, 'a1', 'Author', $4, $5, $6, $7,
+             '{}'::jsonb, $8, $9)`,
     [
       message.id,
       `${P}c1`,
@@ -59,8 +60,8 @@ afterAll(async () => {
 describe('getUnprocessedMessages', () => {
   it('returns unprocessed messages oldest first, joined to their channel', async () => {
     await pool.query(
-      `INSERT INTO channels (channel_id, channel_name, guild_id, guild_name)
-       VALUES ($1, 'general', $2, 'Guild')`,
+      `INSERT INTO channels (source, channel_id, channel_name, guild_id, guild_name)
+       VALUES ('discord', $1, 'general', $2, 'Guild')`,
       [`${P}c1`, `${P}g1`],
     )
     await seed({

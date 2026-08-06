@@ -25,6 +25,7 @@ import { config } from '../config.js'
  * four strategies cannot drift from one another.
  */
 const MESSAGE_FIELDS = {
+  source: messages.source,
   messageId: messages.messageId,
   channelId: messages.channelId,
   guildId: messages.guildId,

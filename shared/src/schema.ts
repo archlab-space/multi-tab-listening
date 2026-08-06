@@ -20,6 +20,7 @@ import {
   serial,
   text,
   timestamp,
+  unique,
   varchar,
   vector,
 } from 'drizzle-orm/pg-core'
@@ -37,20 +38,41 @@ export interface DiscordRawData {
   [key: string]: unknown
 }
 
-export const channels = pgTable('channels', {
-  id: serial('id').primaryKey(),
-  channelId: varchar('channel_id', { length: 255 }).notNull().unique(),
-  channelName: varchar('channel_name', { length: 255 }),
-  guildId: varchar('guild_id', { length: 255 }),
-  guildName: varchar('guild_name', { length: 255 }),
-  createdAt: timestamp('created_at').defaultNow(),
-})
+export const channels = pgTable(
+  'channels',
+  {
+    id: serial('id').primaryKey(),
+    /** Which message source this row came from. See `messages.source`. */
+    source: varchar('source', { length: 20, enum: ['discord'] }).notNull(),
+    channelId: varchar('channel_id', { length: 255 }).notNull(),
+    channelName: varchar('channel_name', { length: 255 }),
+    guildId: varchar('guild_id', { length: 255 }),
+    guildName: varchar('guild_name', { length: 255 }),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => [
+    unique('channels_source_channel_id_unique').on(
+      table.source,
+      table.channelId,
+    ),
+  ],
+)
 
 export const messages = pgTable(
   'messages',
   {
     id: serial('id').primaryKey(),
-    messageId: varchar('message_id', { length: 255 }).notNull().unique(),
+    /**
+     * Which message source wrote this row. Every id below is unique only
+     * within its source — two sources have two id spaces — so the uniqueness
+     * constraints are composite. The enum is the list of sources the system
+     * supports; adding one is deliberately a schema change.
+     *
+     * No default: a default would let a writer omit the column and be quietly
+     * labelled Discord. Without one, omitting it is a compile error.
+     */
+    source: varchar('source', { length: 20, enum: ['discord'] }).notNull(),
+    messageId: varchar('message_id', { length: 255 }).notNull(),
     channelId: varchar('channel_id', { length: 255 }).notNull(),
     guildId: varchar('guild_id', { length: 255 }).notNull(),
     // NOT NULL because the observer that writes these rows cannot produce a
@@ -100,16 +122,30 @@ export const messages = pgTable(
       'gin',
       sql`to_tsvector('english', ${table.content})`,
     ),
+    unique('messages_source_message_id_unique').on(
+      table.source,
+      table.messageId,
+    ),
   ],
 )
 
-export const threads = pgTable('threads', {
-  id: serial('id').primaryKey(),
-  threadId: varchar('thread_id', { length: 255 }).notNull().unique(),
-  originalMessageId: varchar('original_message_id', { length: 255 }).notNull(),
-  channelId: varchar('channel_id', { length: 255 }).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-})
+export const threads = pgTable(
+  'threads',
+  {
+    id: serial('id').primaryKey(),
+    /** Which message source this row came from. See `messages.source`. */
+    source: varchar('source', { length: 20, enum: ['discord'] }).notNull(),
+    threadId: varchar('thread_id', { length: 255 }).notNull(),
+    originalMessageId: varchar('original_message_id', {
+      length: 255,
+    }).notNull(),
+    channelId: varchar('channel_id', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => [
+    unique('threads_source_thread_id_unique').on(table.source, table.threadId),
+  ],
+)
 
 /**
  * The queue the x-poster drains and the tweet-generator fills.
