@@ -1,13 +1,17 @@
+-- drizzle-kit does not manage extensions, so it will not emit this line and
+-- will not re-emit it if this migration is ever regenerated. Without it the
+-- vector(1536) column below cannot be created at all. Keep it first.
 CREATE EXTENSION IF NOT EXISTS vector;
 --> statement-breakpoint
 CREATE TABLE "channels" (
 	"id" serial PRIMARY KEY NOT NULL,
+	"source" varchar(20) NOT NULL,
 	"channel_id" varchar(255) NOT NULL,
 	"channel_name" varchar(255),
-	"guild_id" varchar(255),
-	"guild_name" varchar(255),
+	"space_id" varchar(255),
+	"space_name" varchar(255),
 	"created_at" timestamp DEFAULT now(),
-	CONSTRAINT "channels_channel_id_unique" UNIQUE("channel_id")
+	CONSTRAINT "channels_source_channel_id_unique" UNIQUE("source","channel_id")
 );
 --> statement-breakpoint
 CREATE TABLE "generation_attempts" (
@@ -19,13 +23,14 @@ CREATE TABLE "generation_attempts" (
 --> statement-breakpoint
 CREATE TABLE "messages" (
 	"id" serial PRIMARY KEY NOT NULL,
+	"source" varchar(20) NOT NULL,
 	"message_id" varchar(255) NOT NULL,
 	"channel_id" varchar(255) NOT NULL,
-	"guild_id" varchar(255) NOT NULL,
-	"author_id" varchar(255),
-	"author_name" varchar(255),
-	"content" text,
-	"timestamp" timestamp,
+	"space_id" varchar(255) NOT NULL,
+	"author_id" varchar(255) NOT NULL,
+	"author_name" varchar(255) NOT NULL,
+	"content" text NOT NULL,
+	"timestamp" timestamp NOT NULL,
 	"reply_to_message_id" varchar(255),
 	"thread_id" varchar(255),
 	"is_filtered" boolean DEFAULT false,
@@ -36,16 +41,17 @@ CREATE TABLE "messages" (
 	"question_confidence" integer,
 	"question_type" varchar(50),
 	"created_at" timestamp DEFAULT now(),
-	CONSTRAINT "messages_message_id_unique" UNIQUE("message_id")
+	CONSTRAINT "messages_source_message_id_unique" UNIQUE("source","message_id")
 );
 --> statement-breakpoint
 CREATE TABLE "threads" (
 	"id" serial PRIMARY KEY NOT NULL,
+	"source" varchar(20) NOT NULL,
 	"thread_id" varchar(255) NOT NULL,
 	"original_message_id" varchar(255) NOT NULL,
 	"channel_id" varchar(255) NOT NULL,
 	"created_at" timestamp DEFAULT now(),
-	CONSTRAINT "threads_thread_id_unique" UNIQUE("thread_id")
+	CONSTRAINT "threads_source_thread_id_unique" UNIQUE("source","thread_id")
 );
 --> statement-breakpoint
 CREATE TABLE "tweets" (
@@ -76,7 +82,7 @@ CREATE INDEX "idx_messages_thread_id" ON "messages" USING btree ("thread_id");--
 CREATE INDEX "idx_messages_reply_to" ON "messages" USING btree ("reply_to_message_id");--> statement-breakpoint
 CREATE INDEX "idx_messages_channel_timestamp" ON "messages" USING btree ("channel_id","timestamp");--> statement-breakpoint
 CREATE INDEX "idx_messages_context_search" ON "messages" USING btree ("channel_id","is_question","timestamp");--> statement-breakpoint
-CREATE INDEX "idx_messages_guild_id" ON "messages" USING btree ("guild_id");--> statement-breakpoint
+CREATE INDEX "idx_messages_space_id" ON "messages" USING btree ("space_id");--> statement-breakpoint
 CREATE INDEX "idx_messages_content_fts" ON "messages" USING gin (to_tsvector('english', "content"));--> statement-breakpoint
 CREATE INDEX "idx_tweets_claim" ON "tweets" USING btree ("status","scheduled_at");--> statement-breakpoint
 CREATE INDEX "idx_tweets_posted_at" ON "tweets" USING btree ("posted_at");

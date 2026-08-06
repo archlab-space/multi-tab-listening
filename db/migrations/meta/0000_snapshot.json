@@ -1,5 +1,5 @@
 {
-  "id": "5bd86d63-4b24-46a9-9fac-0f16be50cf7f",
+  "id": "9b764ba7-ced5-4268-863d-e44d33b1243a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -14,6 +14,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "source": {
+          "name": "source",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "channel_id": {
           "name": "channel_id",
           "type": "varchar(255)",
@@ -26,14 +32,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "guild_id": {
-          "name": "guild_id",
+        "space_id": {
+          "name": "space_id",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
-        "guild_name": {
-          "name": "guild_name",
+        "space_name": {
+          "name": "space_name",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
@@ -50,10 +56,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "channels_channel_id_unique": {
-          "name": "channels_channel_id_unique",
+        "channels_source_channel_id_unique": {
+          "name": "channels_source_channel_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "source",
             "channel_id"
           ]
         }
@@ -111,6 +118,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "source": {
+          "name": "source",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "message_id": {
           "name": "message_id",
           "type": "varchar(255)",
@@ -123,8 +136,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "guild_id": {
-          "name": "guild_id",
+        "space_id": {
+          "name": "space_id",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
@@ -133,25 +146,25 @@
           "name": "author_id",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "author_name": {
           "name": "author_name",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "content": {
           "name": "content",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "timestamp": {
           "name": "timestamp",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "reply_to_message_id": {
           "name": "reply_to_message_id",
@@ -377,11 +390,11 @@
           "method": "btree",
           "with": {}
         },
-        "idx_messages_guild_id": {
-          "name": "idx_messages_guild_id",
+        "idx_messages_space_id": {
+          "name": "idx_messages_space_id",
           "columns": [
             {
-              "expression": "guild_id",
+              "expression": "space_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -411,10 +424,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "messages_message_id_unique": {
-          "name": "messages_message_id_unique",
+        "messages_source_message_id_unique": {
+          "name": "messages_source_message_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "source",
             "message_id"
           ]
         }
@@ -431,6 +445,12 @@
           "name": "id",
           "type": "serial",
           "primaryKey": true,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "varchar(20)",
+          "primaryKey": false,
           "notNull": true
         },
         "thread_id": {
@@ -463,10 +483,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "threads_thread_id_unique": {
-          "name": "threads_thread_id_unique",
+        "threads_source_thread_id_unique": {
+          "name": "threads_source_thread_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "source",
             "thread_id"
           ]
         }
