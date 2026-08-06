@@ -36,8 +36,9 @@ export interface GeneratorConfig {
   db: DbConfig
   agentlensBaseUrl: string
   llm: LlmConfig
-  cycleMinutes: number
-  cycleJitterMinutes: number
+  queueTarget: number
+  queuePollMinutes: number
+  emptyPoolMinutes: number
   dailyCap: number
   quota: Quota
   projectCooldownDays: number
@@ -110,14 +111,6 @@ export function loadConfig(
     )
   }
 
-  const cycleMinutes = positiveInt(env, 'CYCLE_MINUTES', 120)
-  const cycleJitterMinutes = nonNegativeInt(env, 'CYCLE_JITTER_MINUTES', 25)
-  if (cycleJitterMinutes >= cycleMinutes) {
-    throw new Error(
-      `CYCLE_JITTER_MINUTES (${cycleJitterMinutes}) must be less than ` +
-        `CYCLE_MINUTES (${cycleMinutes}), or a cycle can be instant`,
-    )
-  }
 
   return {
     db: loadDbConfig(env),
@@ -128,8 +121,15 @@ export function loadConfig(
       model,
       timeoutMs: positiveInt(env, 'LLM_TIMEOUT_MS', 120_000),
     },
-    cycleMinutes,
-    cycleJitterMinutes,
+    // How much stock to hold, not how often to produce. x-poster sets the
+    // pace; this only has to cover the gap between one being taken and the
+    // next being written.
+    queueTarget: positiveInt(env, 'QUEUE_TARGET', 2),
+    // The full-buffer check is a bare COUNT, so it can afford to be frequent.
+    queuePollMinutes: positiveInt(env, 'QUEUE_POLL_MINUTES', 5),
+    // A cycle that produced nothing spent an AgentLens call to find out, so
+    // this one cannot be.
+    emptyPoolMinutes: positiveInt(env, 'EMPTY_POOL_MINUTES', 30),
     dailyCap,
     quota,
     projectCooldownDays: nonNegativeInt(env, 'PROJECT_COOLDOWN_DAYS', 7),

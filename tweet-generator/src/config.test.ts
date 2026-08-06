@@ -10,8 +10,9 @@ describe('loadConfig', () => {
     expect(config.agentlensBaseUrl).toBe('https://api.agentlenshq.com')
     expect(config.llm.baseUrl).toBe('http://localhost:20128/v1')
     expect(config.llm.model).toBe('some-model')
-    expect(config.cycleMinutes).toBe(120)
-    expect(config.cycleJitterMinutes).toBe(25)
+    expect(config.queueTarget).toBe(2)
+    expect(config.queuePollMinutes).toBe(5)
+    expect(config.emptyPoolMinutes).toBe(30)
     expect(config.dailyCap).toBe(10)
     expect(config.quota).toEqual({
       lab_article: 4,
@@ -48,20 +49,18 @@ describe('loadConfig', () => {
     ).toThrow(/exceeds DAILY_CAP/)
   })
 
-  it('rejects a non-integer cycle length', () => {
+  it('rejects a non-integer queue target', () => {
     expect(() =>
-      loadConfig({ ...minimal, CYCLE_MINUTES: 'soon' } as NodeJS.ProcessEnv),
-    ).toThrow(/CYCLE_MINUTES/)
+      loadConfig({ ...minimal, QUEUE_TARGET: 'lots' } as NodeJS.ProcessEnv),
+    ).toThrow(/QUEUE_TARGET/)
   })
 
-  it('rejects jitter that could produce a non-positive interval', () => {
+  it('rejects a queue target of zero', () => {
+    // A target of zero never restocks, so the queue only ever drains. The
+    // service would look alive and post nothing after the last row went out.
     expect(() =>
-      loadConfig({
-        ...minimal,
-        CYCLE_MINUTES: '20',
-        CYCLE_JITTER_MINUTES: '20',
-      } as NodeJS.ProcessEnv),
-    ).toThrow(/CYCLE_JITTER_MINUTES/)
+      loadConfig({ ...minimal, QUEUE_TARGET: '0' } as NodeJS.ProcessEnv),
+    ).toThrow(/QUEUE_TARGET/)
   })
 
   it('reads overrides', () => {
