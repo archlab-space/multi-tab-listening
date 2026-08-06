@@ -123,6 +123,8 @@ async function tick(): Promise<void> {
     return
   }
 
+  let gaveUp = 0
+
   for (const kind of order) {
     const candidate = await selectCandidate(kind, now, config, deps)
     if (!candidate) {
@@ -158,7 +160,14 @@ async function tick(): Promise<void> {
           externalId: candidate.externalId,
           violations: error.violations,
         })
-        return
+        // On to the next kind rather than out of the cycle. Two hours is too
+        // expensive to spend on one item the model cannot fit into the
+        // budget, and the pools are independent — the next kind is a
+        // different item, not a retry of this one. The cost stays bounded
+        // because each give-up has already spent its maxRounds and the loop
+        // runs over the kinds the quota allows, which is a handful.
+        gaveUp += 1
+        continue
       }
       throw error
     }
@@ -204,7 +213,14 @@ async function tick(): Promise<void> {
     return
   }
 
-  logger.info('Every pool was empty this cycle')
+  // Worth separating: an empty pool is a sourcing problem, a cycle that gave
+  // up on every candidate it had is a generation problem, and the fix for one
+  // is nothing like the fix for the other.
+  if (gaveUp > 0) {
+    logger.warn('Every candidate this cycle was given up on', { gaveUp })
+  } else {
+    logger.info('Every pool was empty this cycle')
+  }
 }
 
 /**
