@@ -28,7 +28,7 @@ const MESSAGE_FIELDS = {
   source: messages.source,
   messageId: messages.messageId,
   channelId: messages.channelId,
-  guildId: messages.guildId,
+  spaceId: messages.spaceId,
   authorId: messages.authorId,
   authorName: messages.authorName,
   content: messages.content,
@@ -63,7 +63,7 @@ export class DatabaseQueries {
         .select({
           ...MESSAGE_FIELDS,
           channelName: channels.channelName,
-          guildName: channels.guildName,
+          spaceName: channels.spaceName,
         })
         .from(messages)
         .leftJoin(channels, eq(messages.channelId, channels.channelId))

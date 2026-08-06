@@ -35,7 +35,7 @@ function aMessage(
   return {
     messageId: `${P}m1`,
     channelId: `${P}c1`,
-    guildId: `${P}g1`,
+    spaceId: `${P}g1`,
     authorId: 'author-1',
     authorName: 'Author One',
     content: 'hello world',
@@ -55,10 +55,10 @@ describe('insertChannel', () => {
     })
 
     const { rows } = await pool.query(
-      'SELECT channel_name, guild_name FROM channels WHERE channel_id = $1',
+      'SELECT channel_name, space_name FROM channels WHERE channel_id = $1',
       [`${P}c1`],
     )
-    expect(rows[0]).toEqual({ channel_name: 'general', guild_name: 'Guild' })
+    expect(rows[0]).toEqual({ channel_name: 'general', space_name: 'Guild' })
   })
 
   it('updates the names when the channel already exists', async () => {
@@ -130,7 +130,7 @@ describe('insertMessage', () => {
 
     await pool.query(
       `INSERT INTO messages
-         (source, message_id, channel_id, guild_id, author_id, author_name,
+         (source, message_id, channel_id, space_id, author_id, author_name,
           content, timestamp, raw_data)
        VALUES ('slack', $1, $2, $3, 'author-1', 'Author One',
                'from slack', now(), '{}'::jsonb)`,
@@ -145,6 +145,21 @@ describe('insertMessage', () => {
       { source: 'discord', content: 'from discord' },
       { source: 'slack', content: 'from slack' },
     ])
+  })
+
+  /**
+   * `space_id` is NOT NULL, so a source with no such layer — Telegram has no
+   * guild or workspace — says so with an empty string rather than a null.
+   * The sentinel is only worth having if it round-trips.
+   */
+  it('stores a message whose source has no space', async () => {
+    await db.insertMessage(aMessage({ spaceId: '' }))
+
+    const { rows } = await pool.query(
+      'SELECT space_id FROM messages WHERE message_id = $1',
+      [`${P}m1`],
+    )
+    expect(rows[0]).toEqual({ space_id: '' })
   })
 })
 
@@ -191,7 +206,7 @@ describe('getMessagesByChannel', () => {
       source: 'discord',
       messageId: `${P}new`,
       channelId: `${P}c1`,
-      guildId: `${P}g1`,
+      spaceId: `${P}g1`,
       authorId: 'author-1',
       authorName: 'Author One',
       content: 'hello world',

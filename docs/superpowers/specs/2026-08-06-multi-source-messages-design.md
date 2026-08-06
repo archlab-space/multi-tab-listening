@@ -109,8 +109,11 @@ permalink out of the value. The sentinel is the acknowledged cost.
   read them: `discord-monitor` (42 references, most of them page-scraping and
   status reporting) and `ai-assistant` (9). `tweet-generator` and `x-poster`
   have none — they never touch a message.
-- `discord-monitor/src/types.ts` carries its own `guildId` / `guildName`
-  fields, scraped from the page. These are renamed with the rest.
+- `discord-monitor` keeps its own `guildId` / `guildName` throughout. It is the
+  Discord adapter: its config format is `guild_id/channel_id`, it validates
+  guild IDs as numeric, and it scrapes the guild name from Discord's DOM.
+  "Guild" is the right word inside that boundary. The rename stops at the
+  storage layer, and `database.ts` maps one onto the other as it writes.
 - One migration, `0002`, containing the backfill and the constraint changes in
   that order. Column renames use `ALTER TABLE ... RENAME COLUMN`, which
   preserves data; drizzle-kit prompts to distinguish a rename from a

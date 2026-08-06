@@ -30,7 +30,7 @@ interface SeedMessage {
 async function seed(message: SeedMessage): Promise<void> {
   await pool.query(
     `INSERT INTO messages
-       (source, message_id, channel_id, guild_id, author_id, author_name,
+       (source, message_id, channel_id, space_id, author_id, author_name,
         content, timestamp, reply_to_message_id, thread_id, raw_data,
         processed, is_question)
      VALUES ('discord', $1, $2, $3, 'a1', 'Author', $4, $5, $6, $7,
@@ -60,7 +60,7 @@ afterAll(async () => {
 describe('getUnprocessedMessages', () => {
   it('returns unprocessed messages oldest first, joined to their channel', async () => {
     await pool.query(
-      `INSERT INTO channels (source, channel_id, channel_name, guild_id, guild_name)
+      `INSERT INTO channels (source, channel_id, channel_name, space_id, space_name)
        VALUES ('discord', $1, 'general', $2, 'Guild')`,
       [`${P}c1`, `${P}g1`],
     )
@@ -79,7 +79,7 @@ describe('getUnprocessedMessages', () => {
     const ours = found.filter((m) => m.messageId.startsWith(P))
 
     expect(ours.map((m) => m.messageId)).toEqual([`${P}a`, `${P}b`])
-    expect(ours[0]).toMatchObject({ channelName: 'general', guildName: 'Guild' })
+    expect(ours[0]).toMatchObject({ channelName: 'general', spaceName: 'Guild' })
   })
 
   it('skips messages that are processed, null, or empty', async () => {

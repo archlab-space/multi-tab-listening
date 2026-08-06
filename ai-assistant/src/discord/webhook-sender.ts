@@ -105,7 +105,7 @@ export class DiscordWebhookSender {
     } = analysis
 
     // Create Discord message URL (approximate - you may need to adjust based on actual Discord URLs)
-    const messageUrl = `https://discord.com/channels/${message.guildId}/${message.channelId}/${message.messageId}`
+    const messageUrl = `https://discord.com/channels/${message.spaceId}/${message.channelId}/${message.messageId}`
 
     const embed: DiscordEmbed = {
       title: '🤖 AI Assistant - Question Detected',
@@ -143,7 +143,7 @@ export class DiscordWebhookSender {
         },
       ],
       footer: {
-        text: `Channel name: ${message.channelName} • Guild name: ${message.guildName}`,
+        text: `Channel name: ${message.channelName} • Guild name: ${message.spaceName}`,
       },
       timestamp: new Date().toISOString(),
     }

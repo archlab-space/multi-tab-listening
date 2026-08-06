@@ -46,7 +46,7 @@ export type DiscordMessage = Pick<
   | 'source'
   | 'messageId'
   | 'channelId'
-  | 'guildId'
+  | 'spaceId'
   | 'authorId'
   | 'authorName'
   | 'content'
@@ -59,7 +59,7 @@ export type DiscordMessage = Pick<
 /**
  * A message joined with its channel.
  *
- * `channel_name` and `guild_name` live on the `channels` table, not on
+ * `channel_name` and `space_name` live on the `channels` table, not on
  * `messages`, so they are only available when the two are joined — and the
  * join is a LEFT JOIN, hence nullable: a caller that asked for the enriched
  * shape must acknowledge the name may be missing.
@@ -70,5 +70,5 @@ export type DiscordMessage = Pick<
  */
 export interface DiscordMessageWithChannel extends DiscordMessage {
   channelName: string | null
-  guildName: string | null
+  spaceName: string | null
 }

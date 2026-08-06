@@ -46,8 +46,8 @@ export const channels = pgTable(
     source: varchar('source', { length: 20, enum: ['discord'] }).notNull(),
     channelId: varchar('channel_id', { length: 255 }).notNull(),
     channelName: varchar('channel_name', { length: 255 }),
-    guildId: varchar('guild_id', { length: 255 }),
-    guildName: varchar('guild_name', { length: 255 }),
+    spaceId: varchar('space_id', { length: 255 }),
+    spaceName: varchar('space_name', { length: 255 }),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => [
@@ -74,7 +74,13 @@ export const messages = pgTable(
     source: varchar('source', { length: 20, enum: ['discord'] }).notNull(),
     messageId: varchar('message_id', { length: 255 }).notNull(),
     channelId: varchar('channel_id', { length: 255 }).notNull(),
-    guildId: varchar('guild_id', { length: 255 }).notNull(),
+    /**
+     * The container the channel belongs to: a Discord guild, a Slack
+     * workspace. `''` for a source that has no such layer, such as Telegram,
+     * following the convention of the columns below — the writer substitutes
+     * rather than omits.
+     */
+    spaceId: varchar('space_id', { length: 255 }).notNull(),
     // NOT NULL because the observer that writes these rows cannot produce a
     // null: it falls back to 'unknown' for the author, '' for the content and
     // the current time for the timestamp. They were nullable for as long as
@@ -115,7 +121,7 @@ export const messages = pgTable(
       table.isQuestion,
       table.timestamp,
     ),
-    index('idx_messages_guild_id').on(table.guildId),
+    index('idx_messages_space_id').on(table.spaceId),
     // Full-text search over message content. An expression index, so it is
     // written as raw SQL rather than a column list.
     index('idx_messages_content_fts').using(

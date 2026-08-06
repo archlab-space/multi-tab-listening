@@ -25,15 +25,15 @@ export class Database {
           source: 'discord',
           channelId: channel.channelId,
           channelName: channel.channelName,
-          guildId: channel.guildId,
-          guildName: channel.guildName,
+          spaceId: channel.guildId,
+          spaceName: channel.guildName,
         })
         .onConflictDoUpdate({
           target: [channels.source, channels.channelId],
           set: {
             channelName: channel.channelName,
-            guildId: channel.guildId,
-            guildName: channel.guildName,
+            spaceId: channel.guildId,
+            spaceName: channel.guildName,
           },
         })
     } catch (error) {
@@ -57,7 +57,7 @@ export class Database {
           source: 'discord',
           messageId: message.messageId,
           channelId: message.channelId,
-          guildId: message.guildId,
+          spaceId: message.spaceId,
           authorId: message.authorId,
           authorName: message.authorName,
           content: message.content,
@@ -105,7 +105,7 @@ export class Database {
           source: messages.source,
           messageId: messages.messageId,
           channelId: messages.channelId,
-          guildId: messages.guildId,
+          spaceId: messages.spaceId,
           authorId: messages.authorId,
           authorName: messages.authorName,
           content: messages.content,
@@ -140,7 +140,7 @@ export class Database {
           source: messages.source,
           messageId: messages.messageId,
           channelId: messages.channelId,
-          guildId: messages.guildId,
+          spaceId: messages.spaceId,
           authorId: messages.authorId,
           authorName: messages.authorName,
           content: messages.content,

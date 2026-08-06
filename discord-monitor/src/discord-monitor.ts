@@ -110,8 +110,8 @@ export class DiscordMonitor {
       await page.exposeFunction(
         'handleDiscordMessage',
         async (messageData: DiscordMessage) => {
-          // Ensure guildId is set for the message
-          messageData.guildId = channel.guildId
+          // The scraper speaks Discord; the row speaks storage.
+          messageData.spaceId = channel.guildId
           await this.handleDiscordMessage(messageData, channel.channelId)
         },
       )
