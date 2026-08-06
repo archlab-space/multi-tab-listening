@@ -34,6 +34,8 @@ async function testWebhook() {
         authorName: 'TestUser',
         content: 'How do I configure webpack for React development?',
         timestamp: new Date(),
+        replyToMessageId: null,
+        threadId: null,
         rawData: {},
       },
       isQuestion: true,

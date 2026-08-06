@@ -78,8 +78,7 @@ describe('getUnprocessedMessages', () => {
     const ours = found.filter((m) => m.messageId.startsWith(P))
 
     expect(ours.map((m) => m.messageId)).toEqual([`${P}a`, `${P}b`])
-    expect(ours[0].channelName).toBe('general')
-    expect(ours[0].guildName).toBe('Guild')
+    expect(ours[0]).toMatchObject({ channelName: 'general', guildName: 'Guild' })
   })
 
   it('skips messages that are processed, null, or empty', async () => {
@@ -320,7 +319,7 @@ describe('getRelatedMessages', () => {
     )
     const ours = found.filter((m) => m.messageId.startsWith(P))
 
-    expect(ours[0].messageId).toBe(`${P}thread`)
+    expect(ours[0]).toMatchObject({ messageId: `${P}thread` })
   })
 
   it('falls back to recent messages when the question yields no keywords', async () => {

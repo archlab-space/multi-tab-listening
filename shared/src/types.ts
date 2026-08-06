@@ -36,9 +36,10 @@ export type TweetArchetype = NonNullable<Tweet['archetype']>
  * (`processed`, `is_question`, `embedding`) belong to one consumer, and a
  * shared type that named them would invite the other to use them.
  *
- * Four of these are nullable in the database and were declared required here
- * for a long time. They are not required. Code that assumed otherwise was
- * relying on the monitor never writing a null, which nothing enforces.
+ * Only `replyToMessageId` and `threadId` are nullable, because only they are
+ * optional in Discord. The rest carry NOT NULL: the observer substitutes
+ * 'unknown', '' or the current time rather than omit a field, and the schema
+ * now says so instead of leaving every reader to assume it.
  */
 export type DiscordMessage = Pick<
   typeof messages.$inferSelect,

@@ -53,10 +53,18 @@ export const messages = pgTable(
     messageId: varchar('message_id', { length: 255 }).notNull().unique(),
     channelId: varchar('channel_id', { length: 255 }).notNull(),
     guildId: varchar('guild_id', { length: 255 }).notNull(),
-    authorId: varchar('author_id', { length: 255 }),
-    authorName: varchar('author_name', { length: 255 }),
-    content: text('content'),
-    timestamp: timestamp('timestamp'),
+    // NOT NULL because the observer that writes these rows cannot produce a
+    // null: it falls back to 'unknown' for the author, '' for the content and
+    // the current time for the timestamp. They were nullable for as long as
+    // the table existed, and every consumer quietly assumed otherwise. The
+    // constraint puts the guarantee where both sides can see it — an absent
+    // author reads as 'unknown', an attachment-only message as '', neither of
+    // which needs null to say it.
+    authorId: varchar('author_id', { length: 255 }).notNull(),
+    authorName: varchar('author_name', { length: 255 }).notNull(),
+    content: text('content').notNull(),
+    timestamp: timestamp('timestamp').notNull(),
+    // Genuinely optional: most messages are neither a reply nor in a thread.
     replyToMessageId: varchar('reply_to_message_id', { length: 255 }),
     threadId: varchar('thread_id', { length: 255 }),
     isFiltered: boolean('is_filtered').default(false),
