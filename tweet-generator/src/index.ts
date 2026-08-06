@@ -57,6 +57,8 @@ let stopping = false
 let consecutiveSourceFailures = 0
 /** Latched, so a quiet week produces one alert rather than eighty. */
 let alertedIdle = false
+/** Latched for the same reason: the poll is frequent, the news is not. */
+let loggedStocked = false
 
 /** Sleeps, but wakes early on shutdown. */
 async function sleep(ms: number): Promise<void> {
@@ -277,9 +279,22 @@ async function main(): Promise<void> {
     await checkIdleWatchdog(now, pending)
 
     if (!shouldReplenish(pending, config.queueTarget)) {
+      // Said once per spell rather than every poll. Without it a stocked
+      // queue makes this process completely silent — overnight that is
+      // hours of nothing, which is exactly what a hung process looks like.
+      if (!loggedStocked) {
+        loggedStocked = true
+        logger.info('Stocked, leaving the queue alone', {
+          pending,
+          target: config.queueTarget,
+          pollMinutes: config.queuePollMinutes,
+        })
+      }
       await sleep(config.queuePollMinutes * 60_000)
       continue
     }
+
+    loggedStocked = false
 
     // A failed cycle must never fall through to a zero wait: runCycle has
     // already spent its fast retries by the time it throws, so coming
