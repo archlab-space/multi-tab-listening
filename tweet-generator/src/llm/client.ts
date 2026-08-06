@@ -1,4 +1,5 @@
 import type { LlmConfig } from '../config.js'
+import { policyForStatus, retryAfterMsOf, type RetryPolicy } from '../retry.js'
 
 /**
  * The model replied, but with something unusable — unparseable JSON, or no
@@ -22,9 +23,22 @@ export class LlmError extends Error {
  * down, so the alert would never fire.
  */
 export class LlmUnavailableError extends LlmError {
-  constructor(message: string, options?: { cause?: unknown }) {
+  readonly retry: RetryPolicy
+  /** From `Retry-After`, when the router named a pace. Null otherwise. */
+  readonly retryAfterMs: number | null
+
+  constructor(
+    message: string,
+    options?: {
+      cause?: unknown
+      retry?: RetryPolicy
+      retryAfterMs?: number | null
+    },
+  ) {
     super(message, options)
     this.name = 'LlmUnavailableError'
+    this.retry = options?.retry ?? 'slow'
+    this.retryAfterMs = options?.retryAfterMs ?? null
   }
 }
 
@@ -72,11 +86,21 @@ export class LlmClient {
         },
       )
     } catch (cause) {
-      throw new LlmUnavailableError('The LLM request failed', { cause })
+      // Nothing answered — a refused connection or our own timeout. Both come
+      // back on a scale far shorter than a cycle.
+      throw new LlmUnavailableError('The LLM request failed', {
+        cause,
+        retry: 'fast',
+      })
     }
 
     if (!response.ok) {
-      throw new LlmUnavailableError(`The LLM returned ${response.status}`)
+      // A rejected key is a 401 forever, and the router rate-limits with 429.
+      // Charging both the same two-hour wait was the thing worth fixing.
+      throw new LlmUnavailableError(`The LLM returned ${response.status}`, {
+        retry: policyForStatus(response.status),
+        retryAfterMs: retryAfterMsOf(response),
+      })
     }
 
     const body = (await response.json()) as ChatResponse

@@ -7,7 +7,7 @@ import { loadConfig } from './config.js'
 import { cleanupMedia, mediaPathFor, renderCard } from './image/render.js'
 import { pickVariant, renderTemplate } from './image/template.js'
 import { ARCHETYPES, pickArchetype } from './llm/archetypes.js'
-import { LlmClient, LlmError } from './llm/client.js'
+import { LlmClient } from './llm/client.js'
 import {
   generateTweet,
   GenerationGaveUp,
@@ -17,7 +17,13 @@ import { loadBannedPhrases, type BannedPhrases } from './llm/validate.js'
 import { startOfDayIn } from './select/clock.js'
 import { selectCandidate, type PoolDeps } from './select/pool.js'
 import { orderKinds } from './select/quota.js'
-import { AgentLensClient, AgentLensError } from './sources/agentlens.js'
+import {
+  fastRetryDelayMs,
+  retryAfterMsOfError,
+  retryPolicyOf,
+  shouldAlert,
+} from './retry.js'
+import { AgentLensClient } from './sources/agentlens.js'
 import { GeneratorStore } from './store.js'
 
 const logger = createLogger('tweet-generator.log')
@@ -201,6 +207,34 @@ async function tick(): Promise<void> {
   logger.info('Every pool was empty this cycle')
 }
 
+/**
+ * A cycle, with the failures that clear themselves in seconds absorbed.
+ *
+ * Re-running the whole tick is safe because nothing durable has been written
+ * when one of these throws: the only lasting write is the enqueue at the very
+ * end, and reaching it means the cycle returned rather than threw. The dedupe
+ * key guards the rest. Media cleanup and the idle watchdog are both idempotent.
+ */
+async function runCycle(): Promise<void> {
+  for (let attempt = 1; !stopping; attempt++) {
+    try {
+      await tick()
+      return
+    } catch (error) {
+      const policy = retryPolicyOf(error)
+      const delay = policy === null ? null : fastRetryDelayMs(policy, attempt)
+      if (delay === null) throw error
+
+      logger.warn('Retrying without giving up the cycle', {
+        error: formatError(error),
+        attempt,
+        inMs: delay,
+      })
+      await sleep(delay)
+    }
+  }
+}
+
 async function shutdown(reason: string, code: number): Promise<void> {
   if (stopping) return
   stopping = true
@@ -223,26 +257,41 @@ async function main(): Promise<void> {
   const rng = mulberry32(Date.now() & 0xffffffff)
 
   while (!stopping) {
+    let waitMs = nextIntervalMs(rng)
+
     try {
-      await tick()
+      await runCycle()
       consecutiveSourceFailures = 0
     } catch (error) {
       const message = formatError(error)
+      const policy = retryPolicyOf(error)
 
-      if (error instanceof AgentLensError || error instanceof LlmError) {
+      if (policy !== null) {
         consecutiveSourceFailures += 1
-        logger.warn('An upstream dependency is unreachable', {
+        // `retry` is logged because it is the whole reason this line did not
+        // become an alert: reading "never" next to a silent cycle is what
+        // tells you the wait is pointless.
+        logger.warn('An upstream dependency failed', {
           error: message,
+          retry: policy,
           consecutive: consecutiveSourceFailures,
         })
-        // Three cycles is roughly six hours of silence — long enough to be
-        // a real outage rather than a blip, short enough to still matter.
-        if (consecutiveSourceFailures === 3) {
+
+        if (shouldAlert(policy, consecutiveSourceFailures)) {
           await notifyFailure(
             config.discordWebhookUrl,
             'tweet-generator',
-            `Upstream unreachable for ${consecutiveSourceFailures} cycles: ${message}`,
+            policy === 'never'
+              ? `Upstream failure that cannot clear itself: ${message}`
+              : `Upstream unreachable for ${consecutiveSourceFailures} cycles: ${message}`,
           )
+        }
+
+        // Only ever extends the wait. Coming back before the window the
+        // server named is how a quota gets pushed out rather than reset.
+        const retryAfterMs = retryAfterMsOfError(error)
+        if (policy === 'quota' && retryAfterMs !== null) {
+          waitMs = Math.max(waitMs, retryAfterMs)
         }
       } else {
         // Unlike x-poster, an unexpected failure here is not a reason to
@@ -254,7 +303,6 @@ async function main(): Promise<void> {
     // Logged rather than left implicit: with the jitter resampled every
     // cycle, a process that has gone quiet is otherwise indistinguishable
     // from one that has hung, and the answer is only ever in this number.
-    const waitMs = nextIntervalMs(rng)
     logger.info('Sleeping until the next cycle', {
       minutes: Math.round(waitMs / 60_000),
       wakesAt: new Date(Date.now() + waitMs).toISOString(),

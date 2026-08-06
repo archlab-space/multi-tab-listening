@@ -1,14 +1,31 @@
 import type { SourceKind } from '../config.js'
+import { policyForStatus, retryAfterMsOf, type RetryPolicy } from '../retry.js'
 
 /**
- * Any failure reaching AgentLens. The service loop treats all of them the
- * same way — skip the cycle, write nothing, try again in two hours — so one
- * class is enough.
+ * Any failure reaching AgentLens.
+ *
+ * One class still, but no longer one behaviour: `retry` says what waiting can
+ * buy. Collapsing that distinction charged a DNS blip a full two-hour cycle
+ * and let an expired key sit silent for six hours, which are the two ways
+ * this can be wrong.
  */
 export class AgentLensError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  readonly retry: RetryPolicy
+  /** From `Retry-After`, when the server named a pace. Null otherwise. */
+  readonly retryAfterMs: number | null
+
+  constructor(
+    message: string,
+    options?: {
+      cause?: unknown
+      retry?: RetryPolicy
+      retryAfterMs?: number | null
+    },
+  ) {
     super(message, options)
     this.name = 'AgentLensError'
+    this.retry = options?.retry ?? 'slow'
+    this.retryAfterMs = options?.retryAfterMs ?? null
   }
 }
 
@@ -98,11 +115,22 @@ export class AgentLensClient {
         signal: AbortSignal.timeout(this.timeoutMs),
       })
     } catch (cause) {
-      throw new AgentLensError(`GET ${url.pathname} failed`, { cause })
+      // Nothing answered — DNS, a refused connection, or our own timeout.
+      // Whatever it was is measured in seconds, not cycles.
+      throw new AgentLensError(`GET ${url.pathname} failed`, {
+        cause,
+        retry: 'fast',
+      })
     }
 
     if (!response.ok) {
-      throw new AgentLensError(`GET ${url.pathname} returned ${response.status}`)
+      throw new AgentLensError(
+        `GET ${url.pathname} returned ${response.status}`,
+        {
+          retry: policyForStatus(response.status),
+          retryAfterMs: retryAfterMsOf(response),
+        },
+      )
     }
 
     return (await response.json()) as T

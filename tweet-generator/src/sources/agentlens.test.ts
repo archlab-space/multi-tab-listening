@@ -112,4 +112,61 @@ describe('AgentLensClient', () => {
 
     await expect(client.listBlogs('lab_article')).rejects.toThrow(AgentLensError)
   })
+
+  it('marks a transport failure as worth retrying immediately', async () => {
+    // The DNS failure that cost a real run two hours of idling.
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValue(new Error('getaddrinfo ENOTFOUND api.example.test'))
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    await expect(client.listBlogs('lab_article')).rejects.toMatchObject({
+      retry: 'fast',
+    })
+  })
+
+  it('marks a 5xx as the server’s problem to fix', async () => {
+    const fetchImpl = stubFetch({ error: 'boom' }, 503)
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    await expect(client.listBlogs('lab_article')).rejects.toMatchObject({
+      retry: 'slow',
+    })
+  })
+
+  it('marks a 4xx as something retrying will never fix', async () => {
+    const fetchImpl = stubFetch({ error: 'unauthorized' }, 401)
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    await expect(client.listBlogs('lab_article')).rejects.toMatchObject({
+      retry: 'never',
+    })
+  })
+
+  it('carries the server’s own pace off a 429', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '600' }),
+      json: async () => ({ error: 'rate_limited' }),
+    })
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    await expect(client.listProjects()).rejects.toMatchObject({
+      retry: 'quota',
+      retryAfterMs: 600_000,
+    })
+  })
+
+  it('survives a response that carries no headers at all', async () => {
+    // Not every fetch implementation this is pointed at builds a real
+    // Response, and reading a header must not turn a 429 into a crash.
+    const fetchImpl = stubFetch({ error: 'rate_limited' }, 429)
+    const client = new AgentLensClient(BASE, fetchImpl as never)
+
+    await expect(client.listProjects()).rejects.toMatchObject({
+      retry: 'quota',
+      retryAfterMs: null,
+    })
+  })
 })

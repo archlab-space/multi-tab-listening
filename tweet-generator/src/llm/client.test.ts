@@ -108,6 +108,42 @@ describe('LlmClient.chat', () => {
       LlmError,
     )
   })
+
+  it('marks a transport failure as worth retrying immediately', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+    const client = new LlmClient(config, fetchImpl as never)
+    await expect(
+      client.chat([{ role: 'user', content: 'hi' }]),
+    ).rejects.toMatchObject({ retry: 'fast' })
+  })
+
+  it('marks a 5xx as the router’s problem to fix', async () => {
+    const client = new LlmClient(config, stubChat('', 503) as never)
+    await expect(
+      client.chat([{ role: 'user', content: 'hi' }]),
+    ).rejects.toMatchObject({ retry: 'slow' })
+  })
+
+  it('marks a rejected key as something retrying will never fix', async () => {
+    // A dead LLM_API_KEY currently costs six hours before anyone is told.
+    const client = new LlmClient(config, stubChat('', 401) as never)
+    await expect(
+      client.chat([{ role: 'user', content: 'hi' }]),
+    ).rejects.toMatchObject({ retry: 'never' })
+  })
+
+  it('carries the router’s own pace off a 429', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '30' }),
+      json: async () => ({}),
+    })
+    const client = new LlmClient(config, fetchImpl as never)
+    await expect(
+      client.chat([{ role: 'user', content: 'hi' }]),
+    ).rejects.toMatchObject({ retry: 'quota', retryAfterMs: 30_000 })
+  })
 })
 
 describe('extractJson', () => {
