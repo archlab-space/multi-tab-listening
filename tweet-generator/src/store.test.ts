@@ -227,3 +227,59 @@ describe('expiredMedia', () => {
     expect(await store.expiredMedia(dayStart)).not.toContain('./media/old.png')
   })
 })
+
+/** Puts a row into one of the states only x-poster ever writes. */
+async function setStatus(dedupeKey: string, status: string): Promise<void> {
+  await pool.query('UPDATE tweets SET status = $2 WHERE dedupe_key = $1', [
+    dedupeKey,
+    status,
+  ])
+}
+
+/**
+ * Asserted as a delta, not an absolute.
+ *
+ * `pendingCount` is deliberately unbounded — the buffer is the whole table, so
+ * there is no day or key prefix to scope it to. `clean` only removes this
+ * suite's rows, so a real tweet left queued by a live run would otherwise make
+ * these fail for a reason that has nothing to do with the code under test.
+ */
+describe('pendingCount', () => {
+  let baseline = 0
+
+  beforeEach(async () => {
+    baseline = await store.pendingCount()
+  })
+
+  it('counts the rows still waiting to be posted', async () => {
+    await store.enqueue({ content: 'a', dedupeKey: 'test:p1' })
+    await store.enqueue({ content: 'b', dedupeKey: 'test:p2' })
+
+    expect(await store.pendingCount()).toBe(baseline + 2)
+  })
+
+  it('stops counting a row once x-poster has posted it', async () => {
+    await store.enqueue({ content: 'a', dedupeKey: 'test:p3' })
+    await markPosted('test:p3')
+
+    expect(await store.pendingCount()).toBe(baseline)
+  })
+
+  it('does not count a row x-poster has already claimed', async () => {
+    // 'sending' is stock that has left the shelf. Counting it would let the
+    // buffer read as full while the item is already on its way out.
+    await store.enqueue({ content: 'a', dedupeKey: 'test:p4' })
+    await setStatus('test:p4', 'sending')
+
+    expect(await store.pendingCount()).toBe(baseline)
+  })
+
+  it('does not count rows in a terminal state', async () => {
+    await store.enqueue({ content: 'a', dedupeKey: 'test:p5' })
+    await store.enqueue({ content: 'b', dedupeKey: 'test:p6' })
+    await setStatus('test:p5', 'failed')
+    await setStatus('test:p6', 'uncertain')
+
+    expect(await store.pendingCount()).toBe(baseline)
+  })
+})
