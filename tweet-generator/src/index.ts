@@ -14,7 +14,7 @@ import {
   type PipelineResult,
 } from './llm/pipeline.js'
 import { loadBannedPhrases, type BannedPhrases } from './llm/validate.js'
-import { startOfDayIn } from './select/clock.js'
+import { startOfDayIn } from 'shared/clock'
 import { selectCandidate, type PoolDeps } from './select/pool.js'
 import { orderKinds } from './select/quota.js'
 import {

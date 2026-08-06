@@ -1,3 +1,4 @@
+import { startOfDayIn } from 'shared/clock'
 import type { GeneratorConfig, SourceKind } from '../config.js'
 import type {
   BlogDetail,
@@ -10,7 +11,6 @@ import {
   projectToCandidate,
   type Candidate,
 } from '../sources/candidates.js'
-import { startOfDayIn } from './clock.js'
 import { starBucket } from './dedupe.js'
 import { passesNicheGate } from './niche.js'
 import { DIGEST_ANCHOR_MINUTE } from './quota.js'
