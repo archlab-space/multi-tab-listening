@@ -179,14 +179,17 @@ describe('releaseForRetry', () => {
  * the operator's real queue.
  */
 describe('history', () => {
+  /** The zone the deployment counts its day in; see x-poster's TIMEZONE. */
+  const TZ = 'Asia/Shanghai'
+
   it('does not count a tweet that was never posted', async () => {
-    const before = await queue.history()
+    const before = await queue.history(TZ)
     await queue.enqueue({ content: 'unposted', dedupeKey: 'test:h0' })
-    expect((await queue.history()).postedToday).toBe(before.postedToday)
+    expect((await queue.history(TZ)).postedToday).toBe(before.postedToday)
   })
 
   it('counts today posts and reports the most recent', async () => {
-    const before = await queue.history()
+    const before = await queue.history(TZ)
 
     await queue.enqueue({ content: 'one', dedupeKey: 'test:h1' })
     await queue.enqueue({ content: 'two', dedupeKey: 'test:h2' })
@@ -196,13 +199,13 @@ describe('history', () => {
     const second = await queue.claimNext()
     await queue.markPosted(second!.id, null)
 
-    const after = await queue.history()
+    const after = await queue.history(TZ)
     expect(after.postedToday).toBe(before.postedToday + 2)
     expect(after.lastPostedAt).toBeInstanceOf(Date)
   })
 
   it('does not count failed or uncertain tweets as posted', async () => {
-    const before = await queue.history()
+    const before = await queue.history(TZ)
 
     await queue.enqueue({ content: 'nope', dedupeKey: 'test:h3' })
     const failed = await queue.claimNext()
@@ -212,6 +215,6 @@ describe('history', () => {
     const unsure = await queue.claimNext()
     await queue.markUncertain(unsure!.id, 'unverified')
 
-    expect((await queue.history()).postedToday).toBe(before.postedToday)
+    expect((await queue.history(TZ)).postedToday).toBe(before.postedToday)
   })
 })

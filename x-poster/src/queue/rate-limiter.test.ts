@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import { mulberry32 } from '../human/delay.js'
-import { decide, startOfDay, type PostingHistory } from './rate-limiter.js'
+import { decide, type PostingHistory } from './rate-limiter.js'
 
 const config = loadConfig({
   X_PROFILE_DIR: '/tmp/x-profile',
@@ -9,9 +9,17 @@ const config = loadConfig({
   X_MIN_INTERVAL_MINUTES: '20',
   X_MAX_INTERVAL_MINUTES: '60',
   X_DAILY_CAP: '10',
+  TIMEZONE: 'Asia/Shanghai',
 } as NodeJS.ProcessEnv)
 
-/** Local time, since the active-hours window is expressed in local time. */
+/**
+ * A zoneless literal, which `Date` reads as host time.
+ *
+ * These cases only hold when the host runs the same zone the config names.
+ * The window and the cap are expressed in `config.timezone` now, not in the
+ * host's clock — the case that pins that down is at the bottom of the file
+ * and states its instants in UTC.
+ */
 function at(iso: string): Date {
   return new Date(iso)
 }
@@ -121,10 +129,33 @@ describe('decide', () => {
   })
 })
 
-describe('startOfDay', () => {
-  it('returns local midnight', () => {
-    expect(startOfDay(at('2026-08-04T17:43:21'))).toEqual(
-      at('2026-08-04T00:00:00'),
-    )
+describe('the day boundary', () => {
+  const fresh: PostingHistory = { lastPostedAt: null, postedToday: 0 }
+
+  it('reads the window in the configured zone, not the host clock', () => {
+    // 2026-08-06T02:00Z is 10:00 in Shanghai — inside 09:00-23:00 — and
+    // 04:00 in Berlin, well outside it. Only the config may decide, so a
+    // host anywhere in the world has to get the same verdict here.
+    const at = new Date('2026-08-06T02:00:00.000Z')
+
+    expect(decide(at, fresh, { ...config, timezone: 'Asia/Shanghai' }).reason)
+      .not.toBe('outside-active-hours')
+    expect(
+      decide(at, fresh, { ...config, timezone: 'Europe/Berlin' }).reason,
+    ).toBe('outside-active-hours')
+  })
+
+  it('resets the cap on the configured zone’s midnight', () => {
+    // 2026-08-06T16:30Z is 00:30 on the 7th in Shanghai: a new day, so a cap
+    // spent yesterday is no longer the reason to hold off.
+    const justAfterMidnight = new Date('2026-08-06T16:30:00.000Z')
+    const spent: PostingHistory = { lastPostedAt: null, postedToday: 10 }
+
+    expect(
+      decide(justAfterMidnight, spent, {
+        ...config,
+        timezone: 'Asia/Shanghai',
+      }).reason,
+    ).not.toBe('daily-cap')
   })
 })

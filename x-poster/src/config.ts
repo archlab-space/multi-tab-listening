@@ -17,6 +17,7 @@ export interface XPosterConfig {
   maxIntervalMinutes: number
   dailyCap: number
   activeHours: ActiveHours
+  timezone: string
   maxAttempts: number
   discordWebhookUrl: string | null
 }
@@ -95,6 +96,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): XPosterConfig 
     maxIntervalMinutes,
     dailyCap: positiveInt(env, 'X_DAILY_CAP', 10),
     activeHours: parseActiveHours(env.X_ACTIVE_HOURS),
+    // Required rather than defaulted. Both the active-hours window and the
+    // daily cap are expressed in it, and a default would silently be the
+    // host's zone on one machine and the operator's on another — which is
+    // the bug this replaced, not a convenience.
+    timezone: requiredString(env, 'TIMEZONE'),
     maxAttempts: positiveInt(env, 'X_MAX_ATTEMPTS', 3),
     discordWebhookUrl: env.DISCORD_WEBHOOK_URL || null,
   }
