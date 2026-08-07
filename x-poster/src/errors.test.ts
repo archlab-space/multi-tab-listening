@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   FatalError,
+  LoginRequiredError,
   RetryableError,
   UncertainError,
   classifyError,
@@ -68,6 +69,30 @@ describe('classifyError', () => {
   it('preserves the original as the cause', () => {
     const original = new Error('connect ECONNREFUSED 127.0.0.1:443')
     expect(classifyError(original).cause).toBe(original)
+  })
+})
+
+describe('LoginRequiredError', () => {
+  it('passes straight through classification', () => {
+    const original = new LoginRequiredError('log in, please')
+    expect(classifyError(original)).toBe(original)
+  })
+
+  /**
+   * The circuit breaker keys off `FatalError`. If this were one, the very
+   * shutdown that a missing login triggers would close the browser window the
+   * operator is being asked to log in to.
+   */
+  it('is not a fatal error, so it never breaks the circuit', () => {
+    expect(new LoginRequiredError('log in, please')).not.toBeInstanceOf(
+      FatalError,
+    )
+  })
+
+  it('is never produced by classification and must be thrown deliberately', () => {
+    expect(classifyError(new Error('anything'))).not.toBeInstanceOf(
+      LoginRequiredError,
+    )
   })
 })
 

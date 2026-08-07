@@ -104,11 +104,20 @@ export class TweetQueue {
       .where(eq(tweets.id, id))
   }
 
-  /** Back to pending, but not before `retryAt`. `attempts` is left alone. */
+  /**
+   * Back to pending, but not before `retryAt`. `attempts` is left alone.
+   *
+   * `refundAttempt` gives back the increment `claimNext` charged, for a claim
+   * that never got as far as trying to post. Waiting out an expired login is
+   * not one of the tweet's retries: without the refund, three login outages
+   * would exhaust `maxAttempts` and the next ordinary network blip would
+   * declare a perfectly healthy tweet failed.
+   */
   async releaseForRetry(
     id: number,
     error: string,
     retryAt: Date,
+    options: { refundAttempt?: boolean } = {},
   ): Promise<void> {
     await this.db
       .update(tweets)
@@ -117,6 +126,9 @@ export class TweetQueue {
         lastError: error,
         scheduledAt: retryAt,
         updatedAt: sql`now()`,
+        ...(options.refundAttempt
+          ? { attempts: sql`greatest(${tweets.attempts} - 1, 0)` }
+          : {}),
       })
       .where(eq(tweets.id, id))
   }

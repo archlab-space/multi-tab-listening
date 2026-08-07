@@ -7,22 +7,45 @@ import {
 import { loadConfig } from './config.js'
 import {
   FatalError,
+  LoginRequiredError,
   RetryableError,
   UncertainError,
   classifyError,
 } from './errors.js'
-import { notifyFailure } from 'shared/notifier'
+import { notifyAttention, notifyFailure } from 'shared/notifier'
 import { decide } from './queue/rate-limiter.js'
 import { TweetQueue } from './queue/tweet-queue.js'
 import { postTweet } from './x/composer.js'
+import { waitForLogin } from './x/session.js'
 
 const logger = createLogger('x-poster.log')
 const config = loadConfig()
 const pool = createPool()
 const queue = new TweetQueue(pool)
 
-let handle: BrowserHandle | null = null
+/**
+ * The browser is held as the in-flight promise, not the resolved handle.
+ *
+ * Shutting down mid-launch used to see a null handle and skip the cleanup
+ * entirely, leaving behind a Chrome nobody owned. Holding the promise means
+ * shutdown can await the launch it interrupted and then close it.
+ */
+let browserPromise: Promise<BrowserHandle> | null = null
 let stopping = false
+
+/** How long cleanup gets before the process leaves anyway. */
+const CLEANUP_TIMEOUT_MS = 10_000
+
+async function getBrowser(): Promise<BrowserHandle> {
+  if (!browserPromise) {
+    browserPromise = connectOrLaunch(config, logger).catch((error) => {
+      // Never cache a failed launch, or every later tick inherits it.
+      browserPromise = null
+      throw error
+    })
+  }
+  return browserPromise
+}
 
 /** Sleeps, but wakes early on shutdown. */
 async function sleep(ms: number): Promise<void> {
@@ -62,9 +85,7 @@ async function tick(): Promise<void> {
 
   logger.info('Claimed a tweet', { id: tweet.id, attempt: tweet.attempts })
 
-  if (!handle) {
-    handle = await connectOrLaunch(config, logger)
-  }
+  const handle = await getBrowser()
 
   try {
     const result = await postTweet(
@@ -89,6 +110,31 @@ async function tick(): Promise<void> {
     logger.info('Posted', { id: tweet.id })
   } catch (raw) {
     const error = classifyError(raw)
+
+    if (error instanceof LoginRequiredError) {
+      // Hand the tweet back before settling in to wait. The wait has no upper
+      // bound, and a row left in `sending` for hours is invisible to every
+      // other process — including the next run of this one.
+      await queue.releaseForRetry(tweet.id, error.message, new Date(), {
+        refundAttempt: true,
+      })
+
+      logger.warn('Session expired — waiting for a manual login', {
+        id: tweet.id,
+        profileDir: config.profileDir,
+      })
+      await notifyAttention(
+        config.discordWebhookUrl,
+        'x-poster',
+        `${error.message}\n\nChrome is still open. Log in to the profile at ` +
+          `${config.profileDir} and posting resumes on its own — no restart ` +
+          'needed.',
+      )
+
+      // Chrome deliberately stays up: it is the window being logged into.
+      await waitForLogin(handle.page, logger, { isCancelled: () => stopping })
+      return
+    }
 
     if (error instanceof UncertainError) {
       await queue.markUncertain(tweet.id, error.message)
@@ -121,12 +167,50 @@ async function tick(): Promise<void> {
   }
 }
 
+/** Resolves when `work` settles, or when `ms` is up — whichever is first. */
+function atMost(work: Promise<unknown>, ms: number): Promise<unknown> {
+  return Promise.race([
+    work.catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, ms)),
+  ])
+}
+
+/**
+ * Winston's file transport writes asynchronously and `process.exit` does not
+ * wait for it, so the last lines — the ones saying why we stopped — were the
+ * ones most likely to be missing from x-poster.log.
+ */
+function flushLogs(): Promise<unknown> {
+  return atMost(
+    new Promise((resolve) => {
+      logger.once('finish', resolve)
+      logger.end()
+    }),
+    2_000,
+  )
+}
+
 async function shutdown(reason: string, code: number): Promise<void> {
-  if (stopping) return
+  if (stopping) {
+    // Already cleaning up, and here comes a second signal: the operator is
+    // telling us the tidy exit is taking too long. Go now.
+    process.exit(code)
+  }
   stopping = true
   logger.info('Shutting down', { reason })
-  await handle?.close().catch(() => {})
-  await pool.end().catch(() => {})
+
+  // Bounded, and both at once. A wedged browser or a pool with a query still
+  // in flight must not leave the process half-dead in the terminal, which
+  // from the outside is indistinguishable from a hang.
+  await atMost(
+    Promise.allSettled([
+      browserPromise?.then((handle) => handle.close()) ?? Promise.resolve(),
+      pool.end(),
+    ]),
+    CLEANUP_TIMEOUT_MS,
+  )
+
+  await flushLogs()
   process.exit(code)
 }
 
@@ -153,8 +237,21 @@ async function main(): Promise<void> {
         continue
       }
 
-      // Circuit break. A dead session makes every subsequent attempt fail
-      // too, and hammering a challenged account only deepens the problem.
+      if (error instanceof LoginRequiredError) {
+        // Reached only if one escapes `tick`, which handles its own. Never a
+        // circuit break: breaking the circuit closes the browser, and this is
+        // precisely the error that needs the browser left open.
+        logger.warn('Session expired outside a post — waiting for a login', {
+          error: error.message,
+        })
+        const handle = await getBrowser()
+        await waitForLogin(handle.page, logger, { isCancelled: () => stopping })
+        continue
+      }
+
+      // Circuit break. A challenge or a changed page makes every subsequent
+      // attempt fail too, and hammering a challenged account only deepens
+      // the problem.
       logger.error('Circuit break', { error: error.message })
       await notifyFailure(config.discordWebhookUrl, 'x-poster', error.message)
       await shutdown('circuit break', 1)

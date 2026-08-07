@@ -14,15 +14,31 @@ export class RetryableError extends Error {
 }
 
 /**
- * Unrecoverable without a human: session expired, verification challenge,
- * every selector missing. Breaks the circuit rather than advancing to the
- * next row, because a dead session makes every subsequent attempt fail too —
- * and hammering a challenged account only deepens the problem.
+ * Unrecoverable without a human: a verification challenge, every selector
+ * missing. Breaks the circuit rather than advancing to the next row, because
+ * whatever this is makes every subsequent attempt fail too — and hammering a
+ * challenged account only deepens the problem.
  */
 export class FatalError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)
     this.name = 'FatalError'
+  }
+}
+
+/**
+ * The session is gone and only a person can bring it back: log in again, in
+ * the dedicated Chrome profile.
+ *
+ * Deliberately NOT a subclass of FatalError. Fatal breaks the circuit, and
+ * breaking the circuit closes the browser — which would shut the very window
+ * the operator is being asked to log into, making the instruction impossible
+ * to follow. This category parks the loop and waits instead.
+ */
+export class LoginRequiredError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'LoginRequiredError'
   }
 }
 
@@ -55,11 +71,12 @@ const RETRYABLE_PATTERNS = [
  */
 export function classifyError(
   error: unknown,
-): RetryableError | FatalError | UncertainError {
+): RetryableError | FatalError | UncertainError | LoginRequiredError {
   if (
     error instanceof RetryableError ||
     error instanceof FatalError ||
-    error instanceof UncertainError
+    error instanceof UncertainError ||
+    error instanceof LoginRequiredError
   ) {
     return error
   }
