@@ -1,4 +1,4 @@
-import { and, eq, lte, max, sql } from 'drizzle-orm'
+import { and, eq, gte, lte, max, sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import type { Tweet } from 'shared'
 import { startOfDayIn } from 'shared/clock'
@@ -172,5 +172,21 @@ export class TweetQueue {
       postedToday: Number(row?.count ?? 0),
       lastPostedAt: row?.last ?? null,
     }
+  }
+
+  /**
+   * How many posts have gone out since `since`.
+   *
+   * Kept separate from `history` rather than folded into it: this one is
+   * asked about a window boundary the caller computes, and the queue has no
+   * business knowing what a posting window is.
+   */
+  async postedSince(since: Date): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<string>`count(*)` })
+      .from(tweets)
+      .where(and(eq(tweets.status, 'posted'), gte(tweets.postedAt, since)))
+
+    return Number(row?.count ?? 0)
   }
 }

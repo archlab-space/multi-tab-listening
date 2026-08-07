@@ -217,4 +217,28 @@ describe('history', () => {
 
     expect((await queue.history(TZ)).postedToday).toBe(before.postedToday)
   })
+
+  it('counts only what was posted since the given instant', async () => {
+    // What a window needs: a morning window's four must not be charged
+    // against the evening's six, so the boundary matters and the day's total
+    // does not.
+    //
+    // The boundaries are an hour out either side because `markPosted` writes
+    // the database's `now()` and the assertions run on the host's clock; an
+    // hour of slack means the case does not depend on the two agreeing.
+    const anHourAgo = new Date(Date.now() - 60 * 60_000)
+    const inAnHour = new Date(Date.now() + 60 * 60_000)
+    const before = await queue.postedSince(anHourAgo)
+
+    // Posted straight from the enqueued rows rather than through `claimNext`.
+    // What is under test is the counting, and claiming brings in the
+    // `scheduled_at <= now` race that makes the rest of this file flaky.
+    const one = await queue.enqueue({ content: 'one', dedupeKey: 'test:w1' })
+    const two = await queue.enqueue({ content: 'two', dedupeKey: 'test:w2' })
+    await queue.markPosted(one!.id, null)
+    await queue.markPosted(two!.id, null)
+
+    expect(await queue.postedSince(anHourAgo)).toBe(before + 2)
+    expect(await queue.postedSince(inAnHour)).toBe(0)
+  })
 })
