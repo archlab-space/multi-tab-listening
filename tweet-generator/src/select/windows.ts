@@ -11,6 +11,12 @@ import type { SourceKind } from '../config.js'
  * gh_project's window is generous but unused in practice: the leaderboard is
  * always populated, and eligibility there is decided by the star bucket, the
  * cooldown, and the momentum floor instead.
+ *
+ * x_digest needs no anchor of its own even though it is the one source with a
+ * publishing time. Both of the day's digests land at 09:05 local, so yesterday's
+ * has already aged out by the time the quota picker first offers the kind, and
+ * newest-first ordering picks today's. The 24h here is only the backstop for an
+ * AgentLens outage, which is what it is for every other kind too.
  */
 export const WINDOW_HOURS: Record<SourceKind, number> = {
   x_digest: 24,

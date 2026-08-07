@@ -42,7 +42,7 @@ function backoffMs(attempts: number): number {
 
 async function tick(): Promise<void> {
   const now = new Date()
-  const verdict = decide(now, await queue.history(now), config)
+  const verdict = decide(now, await queue.history(config.timezone, now), config)
 
   if (!verdict.allowed) {
     const waitMs = Math.max(1000, verdict.waitUntil!.getTime() - now.getTime())

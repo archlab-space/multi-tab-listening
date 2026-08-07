@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from './config.js'
 
-const required = { X_PROFILE_DIR: '/tmp/x-profile' } as NodeJS.ProcessEnv
+const required = {
+  X_PROFILE_DIR: '/tmp/x-profile',
+  TIMEZONE: 'Asia/Shanghai',
+} as NodeJS.ProcessEnv
 
 describe('loadConfig', () => {
   it('requires a profile directory', () => {
     expect(() => loadConfig({} as NodeJS.ProcessEnv)).toThrow(/X_PROFILE_DIR/)
+  })
+
+  it('requires a timezone', () => {
+    // Without one the daily cap resets on the host's midnight, which is not
+    // the midnight tweet-generator counts its own cap against. Built
+    // literally rather than from `required`, which now supplies the key.
+    expect(() =>
+      loadConfig({ X_PROFILE_DIR: '/tmp/x-profile' } as NodeJS.ProcessEnv),
+    ).toThrow(/TIMEZONE/)
   })
 
   it('applies documented defaults', () => {

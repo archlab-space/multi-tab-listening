@@ -104,6 +104,24 @@ export class GeneratorStore {
     return { used, total }
   }
 
+  /**
+   * How many tweets are still waiting for x-poster to take one.
+   *
+   * This is the generator's set point, so only 'pending' counts as stock. A
+   * 'sending' row has already been claimed and is on its way out; 'posted',
+   * 'failed' and 'uncertain' are terminal. Counting any of them would let a
+   * row that is never coming back masquerade as inventory, and the buffer
+   * would starve while reading as full.
+   */
+  async pendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: count() })
+      .from(tweets)
+      .where(eq(tweets.status, 'pending'))
+
+    return row?.count ?? 0
+  }
+
   async knownDedupeKeys(keys: string[]): Promise<Set<string>> {
     if (keys.length === 0) return new Set()
     const rows = await this.db

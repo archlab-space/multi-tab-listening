@@ -1,6 +1,7 @@
 import { and, eq, lte, max, sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import type { Tweet } from 'shared'
+import { startOfDayIn } from 'shared/clock'
 import { createDb } from 'shared/db'
 import { tweets } from 'shared/schema'
 import type { PostingHistory } from './rate-limiter.js'
@@ -130,13 +131,22 @@ export class TweetQueue {
     return row ?? null
   }
 
-  /** What the rate limiter needs to know, read straight from the table. */
-  async history(now: Date = new Date()): Promise<PostingHistory> {
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  /**
+   * What the rate limiter needs to know, read straight from the table.
+   *
+   * `timezone` is a parameter rather than a host-clock read: this count is
+   * what the daily cap is checked against, and it has to mean the same day
+   * tweet-generator counts its own cap against.
+   */
+  async history(
+    timezone: string,
+    now: Date = new Date(),
+  ): Promise<PostingHistory> {
+    const dayStart = startOfDayIn(timezone, now)
 
     const [row] = await this.db
       .select({
-        count: sql<string>`count(*) filter (where ${tweets.postedAt} >= ${startOfDay})`,
+        count: sql<string>`count(*) filter (where ${tweets.postedAt} >= ${dayStart})`,
         // `max()` rather than a raw sql expression: the `sql<T>` annotation is
         // a claim to the compiler, not a conversion, so a hand-written
         // max(posted_at) arrives as the driver's string. The aggregate helper

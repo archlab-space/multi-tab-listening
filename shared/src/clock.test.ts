@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { minutesIntoDayIn, startOfDayIn } from './clock.js'
+import { minutesIntoDayIn, nextDayStartIn, startOfDayIn } from './clock.js'
 
 describe('startOfDayIn', () => {
   it('returns the instant of local midnight, not host midnight', () => {
@@ -48,5 +48,23 @@ describe('minutesIntoDayIn', () => {
     expect(
       minutesIntoDayIn('Asia/Shanghai', new Date('2026-08-05T15:59:00.000Z')),
     ).toBe(23 * 60 + 59)
+  })
+})
+
+describe('nextDayStartIn', () => {
+  it('returns tomorrow midnight in the named zone', () => {
+    // 2026-08-06T15:30Z is 23:30 in Shanghai, so the next day begins half an
+    // hour later, at 2026-08-06T16:00Z.
+    expect(
+      nextDayStartIn('Asia/Shanghai', new Date('2026-08-06T15:30:00.000Z')),
+    ).toEqual(new Date('2026-08-06T16:00:00.000Z'))
+  })
+
+  it('is unaffected by the host zone', () => {
+    // 09:00 in Shanghai on the 6th; the same instant is 02:00 in Berlin and
+    // still the 5th in New York. Only the named zone may decide.
+    expect(
+      nextDayStartIn('Asia/Shanghai', new Date('2026-08-06T01:00:00.000Z')),
+    ).toEqual(new Date('2026-08-06T16:00:00.000Z'))
   })
 })

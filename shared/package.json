@@ -10,7 +10,8 @@
     "./errors": "./src/errors.ts",
     "./schema": "./src/schema.ts",
     "./notifier": "./src/notifier.ts",
-    "./rng": "./src/rng.ts"
+    "./rng": "./src/rng.ts",
+    "./clock": "./src/clock.ts"
   },
   "types": "./src/types.ts",
   "scripts": {

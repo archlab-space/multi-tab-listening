@@ -1,9 +1,9 @@
+import { minutesIntoDayIn } from 'shared/clock'
 import {
   SOURCE_PRIORITY,
   type GeneratorConfig,
   type SourceKind,
 } from '../config.js'
-import { minutesIntoDayIn } from './clock.js'
 
 export interface QuotaUsage {
   used: Record<SourceKind, number>

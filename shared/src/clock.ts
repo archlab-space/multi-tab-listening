@@ -68,6 +68,18 @@ export function startOfDayIn(timezone: string, at: Date): Date {
   return new Date(localMidnightAsUtc - offsetMsAt(timezone, new Date(firstPass)))
 }
 
+/**
+ * The next midnight in `timezone` strictly after `at`.
+ *
+ * Advancing the instant by 24 hours and then asking for its day start, rather
+ * than adding one to the wall-clock day: the offset at `at` need not be the
+ * offset tomorrow, and `startOfDayIn` already resolves that for whatever
+ * instant it is handed.
+ */
+export function nextDayStartIn(timezone: string, at: Date): Date {
+  return startOfDayIn(timezone, new Date(at.getTime() + 86_400_000))
+}
+
 export function minutesIntoDayIn(timezone: string, at: Date): number {
   const w = wallClockIn(timezone, at)
   return w.hour * 60 + w.minute

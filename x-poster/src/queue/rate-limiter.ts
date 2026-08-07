@@ -1,3 +1,8 @@
+import {
+  minutesIntoDayIn,
+  nextDayStartIn,
+  startOfDayIn,
+} from 'shared/clock'
 import type { XPosterConfig } from '../config.js'
 import { sampleDelay, type Rng } from '../human/delay.js'
 
@@ -20,22 +25,8 @@ export interface RateLimitDecision {
 
 const MS_PER_MINUTE = 60_000
 
-/** Local midnight for the day containing `now`. */
-export function startOfDay(now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate())
-}
-
-function minutesIntoDay(now: Date): number {
-  return now.getHours() * 60 + now.getMinutes()
-}
-
 function windowOpensOn(day: Date, config: XPosterConfig): Date {
   return new Date(day.getTime() + config.activeHours.startMinute * MS_PER_MINUTE)
-}
-
-function tomorrow(now: Date): Date {
-  const day = startOfDay(now)
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)
 }
 
 /**
@@ -54,12 +45,12 @@ export function decide(
   config: XPosterConfig,
   rng: Rng = Math.random,
 ): RateLimitDecision {
-  const minute = minutesIntoDay(now)
+  const minute = minutesIntoDayIn(config.timezone, now)
 
   if (minute < config.activeHours.startMinute) {
     return {
       allowed: false,
-      waitUntil: windowOpensOn(startOfDay(now), config),
+      waitUntil: windowOpensOn(startOfDayIn(config.timezone, now), config),
       reason: 'outside-active-hours',
     }
   }
@@ -67,7 +58,7 @@ export function decide(
   if (minute >= config.activeHours.endMinute) {
     return {
       allowed: false,
-      waitUntil: windowOpensOn(tomorrow(now), config),
+      waitUntil: windowOpensOn(nextDayStartIn(config.timezone, now), config),
       reason: 'outside-active-hours',
     }
   }
@@ -75,7 +66,7 @@ export function decide(
   if (history.postedToday >= config.dailyCap) {
     return {
       allowed: false,
-      waitUntil: windowOpensOn(tomorrow(now), config),
+      waitUntil: windowOpensOn(nextDayStartIn(config.timezone, now), config),
       reason: 'daily-cap',
     }
   }

@@ -189,8 +189,9 @@ describe('selectCandidate for x_digest', () => {
   })
 
   it("ignores yesterday's digest entirely", async () => {
-    // A digest is worthless the next morning, so the window is today's
-    // 09:00 anchor rather than a rolling 24 hours.
+    // A digest is worthless the next morning. Nothing anchors the window to
+    // 09:00 to achieve that: the day's digests land at 09:05, so yesterday's
+    // is already out of the 24h window whenever the digest is offered at all.
     const candidate = await selectCandidate(
       'x_digest',
       now,
