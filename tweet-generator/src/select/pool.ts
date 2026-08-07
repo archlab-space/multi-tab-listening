@@ -1,4 +1,3 @@
-import { startOfDayIn } from 'shared/clock'
 import type { GeneratorConfig, SourceKind } from '../config.js'
 import type {
   BlogDetail,
@@ -13,7 +12,6 @@ import {
 } from '../sources/candidates.js'
 import { starBucket } from './dedupe.js'
 import { passesNicheGate } from './niche.js'
-import { DIGEST_ANCHOR_MINUTE } from './quota.js'
 import { windowStart } from './windows.js'
 
 /**
@@ -34,25 +32,12 @@ export interface PoolDeps {
 const MAX_FAILURES = 3
 const MS_PER_DAY = 86_400_000
 
-/**
- * The digest's window is today's 09:00 anchor, not a rolling 24 hours:
- * AgentLens publishes exactly two digests a day just after it, and one of
- * them is worthless the next morning.
- */
-function digestWindowStart(now: Date, config: GeneratorConfig): Date {
-  return new Date(
-    startOfDayIn(config.timezone, now).getTime() + DIGEST_ANCHOR_MINUTE * 60_000,
-  )
-}
-
 async function selectBlog(
   kind: SourceKind,
   now: Date,
-  config: GeneratorConfig,
   deps: PoolDeps,
 ): Promise<Candidate | null> {
-  const since =
-    kind === 'x_digest' ? digestWindowStart(now, config) : windowStart(kind, now)
+  const since = windowStart(kind, now)
 
   const items = (await deps.listBlogs(kind))
     .filter((item) => new Date(item.generated_at) >= since)
@@ -128,5 +113,5 @@ export function selectCandidate(
 ): Promise<Candidate | null> {
   return kind === 'gh_project'
     ? selectProject(now, config, deps)
-    : selectBlog(kind, now, config, deps)
+    : selectBlog(kind, now, deps)
 }
