@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import { mulberry32 } from '../human/delay.js'
-import { decide, type PostingHistory } from './rate-limiter.js'
+import { decide, nextGapMinutes, type PostingHistory } from './rate-limiter.js'
 
 const config = loadConfig({
   X_PROFILE_DIR: '/tmp/x-profile',
@@ -157,5 +157,67 @@ describe('the day boundary', () => {
         timezone: 'Asia/Shanghai',
       }).reason,
     ).not.toBe('daily-cap')
+  })
+})
+
+describe('nextGapMinutes', () => {
+  const end = new Date('2026-08-07T23:00:00')
+  const steady = () => 0.5 // the midpoint of the jitter range: no adjustment
+
+  it('spreads the remaining quota over the remaining window', () => {
+    // Six over 17:00-23:00: after the first post there are five left and six
+    // hours, and the +1 puts the last one an hour before the close.
+    const gap = nextGapMinutes(end, new Date('2026-08-07T17:00:00'), 5, 0, steady)
+    expect(gap).toBe(60)
+  })
+
+  it('holds that pace as the window drains', () => {
+    expect(
+      nextGapMinutes(end, new Date('2026-08-07T18:00:00'), 4, 0, steady),
+    ).toBe(60)
+    expect(
+      nextGapMinutes(end, new Date('2026-08-07T21:00:00'), 1, 0, steady),
+    ).toBe(60)
+  })
+
+  it('derives a tighter pace for a short window', () => {
+    // Four over 06:00-08:00, after the first post: three left, two hours.
+    const morningEnd = new Date('2026-08-07T08:00:00')
+    expect(
+      nextGapMinutes(morningEnd, new Date('2026-08-07T06:00:00'), 3, 0, steady),
+    ).toBe(30)
+  })
+
+  it('catches up after a slot that could not be filled', () => {
+    // The 18:00 post did not go out until 18:30. The quota is unchanged and
+    // the window is shorter, so the gap narrows rather than pushing work past
+    // the close.
+    const gap = nextGapMinutes(end, new Date('2026-08-07T18:30:00'), 4, 0, steady)
+    expect(gap).toBe(54)
+  })
+
+  it('applies jitter symmetrically about the target', () => {
+    const last = new Date('2026-08-07T17:00:00')
+    expect(nextGapMinutes(end, last, 5, 0.25, () => 1)).toBeCloseTo(75)
+    expect(nextGapMinutes(end, last, 5, 0.25, () => 0)).toBeCloseTo(45)
+    expect(nextGapMinutes(end, last, 5, 0.25, steady)).toBeCloseTo(60)
+  })
+
+  it('averages the target rather than drifting below it', () => {
+    // The property `sampleDelay` would break: a log-normal with its median at
+    // a quarter of the range biases every gap low, and a window's worth of
+    // low draws spends the quota early and idles out the rest.
+    //
+    // Named `sequence`, not `rng`: the file-level `rng` rebuilds the
+    // generator on every call and so returns one fixed number, which would
+    // average to itself and prove nothing.
+    const last = new Date('2026-08-07T17:00:00')
+    const sequence = mulberry32(2026)
+    let total = 0
+    for (let i = 0; i < 2000; i++) {
+      total += nextGapMinutes(end, last, 5, 0.25, sequence)
+    }
+    expect(total / 2000).toBeGreaterThan(58)
+    expect(total / 2000).toBeLessThan(62)
   })
 })

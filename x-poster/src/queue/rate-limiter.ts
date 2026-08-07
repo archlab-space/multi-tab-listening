@@ -25,6 +25,40 @@ export interface RateLimitDecision {
 
 const MS_PER_MINUTE = 60_000
 
+/**
+ * How long to wait after `lastPostedAt` before the next post in this window.
+ *
+ * Derived rather than sampled: what is left of the window, over what is left
+ * of its quota plus one. The plus one is what leaves the window room to
+ * close — without it the final post lands exactly on the boundary. Six over a
+ * six-hour evening comes out at a steady hour and finishes an hour early, and
+ * four over a two-hour morning comes out at half an hour, from the same
+ * expression.
+ *
+ * It also self-corrects: a slot that could not be filled leaves the quota
+ * alone while the window shrinks, so the next gap narrows.
+ *
+ * The jitter is uniform and symmetric, and deliberately not `sampleDelay`.
+ * That one draws from a log-normal whose median sits at a quarter of the
+ * range, because it models the pauses a person leaves between actions.
+ * Applied here it would bias every gap below target, and a window's worth of
+ * low draws would spend the quota early and idle out the rest — the failure
+ * this whole change exists to remove.
+ */
+export function nextGapMinutes(
+  windowEnd: Date,
+  lastPostedAt: Date,
+  remainingQuota: number,
+  jitter: number,
+  rng: Rng = Math.random,
+): number {
+  const leftMinutes =
+    (windowEnd.getTime() - lastPostedAt.getTime()) / MS_PER_MINUTE
+  const target = leftMinutes / (remainingQuota + 1)
+
+  return target * (1 + (rng() * 2 - 1) * jitter)
+}
+
 function windowOpensOn(day: Date, config: XPosterConfig): Date {
   return new Date(day.getTime() + config.activeHours.startMinute * MS_PER_MINUTE)
 }
