@@ -15,6 +15,7 @@ import {
 import { notifyAttention, notifyFailure } from 'shared/notifier'
 import { decide } from './queue/rate-limiter.js'
 import { TweetQueue } from './queue/tweet-queue.js'
+import { activeWindowAt, windowStartAt } from './queue/windows.js'
 import { postTweet } from './x/composer.js'
 import { waitForLogin } from './x/session.js'
 
@@ -65,7 +66,16 @@ function backoffMs(attempts: number): number {
 
 async function tick(): Promise<void> {
   const now = new Date()
-  const verdict = decide(now, await queue.history(config.timezone, now), config)
+  const counts = await queue.history(config.timezone, now)
+
+  // The window is looked up here rather than inside `decide` because the
+  // count it implies has to come from the database, and `decide` is pure.
+  const window = activeWindowAt(config.timezone, config.windows, now)
+  const postedInWindow = window
+    ? await queue.postedSince(windowStartAt(config.timezone, window, now))
+    : 0
+
+  const verdict = decide(now, { ...counts, postedInWindow }, config)
 
   if (!verdict.allowed) {
     const waitMs = Math.max(1000, verdict.waitUntil!.getTime() - now.getTime())
@@ -223,7 +233,9 @@ async function main(): Promise<void> {
   logger.info('Starting x-poster', {
     dryRun: config.dryRun,
     dailyCap: config.dailyCap,
-    activeHours: config.activeHours,
+    windows: config.windows.map(
+      (window) => `${window.startMinute}-${window.endMinute}x${window.quota}`,
+    ),
   })
 
   process.on('SIGINT', () => void shutdown('SIGINT', 0))

@@ -1,12 +1,7 @@
 import dotenv from 'dotenv'
+import { parseWindows, type PostingWindow } from './queue/windows.js'
 
 dotenv.config()
-
-/** Local-time posting window, expressed as minutes from midnight. */
-export interface ActiveHours {
-  startMinute: number
-  endMinute: number
-}
 
 export interface XPosterConfig {
   profileDir: string
@@ -14,9 +9,10 @@ export interface XPosterConfig {
   chromePath: string
   dryRun: boolean
   minIntervalMinutes: number
-  maxIntervalMinutes: number
+  /** How far the derived gap may stray from its target, as a fraction. */
+  intervalJitter: number
   dailyCap: number
-  activeHours: ActiveHours
+  windows: PostingWindow[]
   timezone: string
   maxAttempts: number
   discordWebhookUrl: string | null
@@ -45,62 +41,63 @@ function positiveInt(
   return value
 }
 
-/**
- * A window that wrapped past midnight would need its own set of comparisons
- * throughout the rate limiter. Rejecting it keeps one untested edge case out
- * of the scheduler entirely.
- */
-function parseActiveHours(raw: string | undefined): ActiveHours {
-  const value = raw ?? '09:00-23:00'
-  const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(value)
-  if (!match) {
-    throw new Error(`X_ACTIVE_HOURS must look like "09:00-23:00", got: ${value}`)
+/** A fraction in [0, 1). One is not allowed: a gap may not reach zero. */
+function fraction(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: number,
+): number {
+  const raw = env[key]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0 || value >= 1) {
+    throw new Error(`${key} must be at least 0 and below 1, got: ${raw}`)
   }
-
-  const startHour = Number(match[1])
-  const startMin = Number(match[2])
-  const endHour = Number(match[3])
-  const endMin = Number(match[4])
-
-  if (startHour > 23 || endHour > 23 || startMin > 59 || endMin > 59) {
-    throw new Error(`X_ACTIVE_HOURS contains an invalid time: ${value}`)
-  }
-
-  const startMinute = startHour * 60 + startMin
-  const endMinute = endHour * 60 + endMin
-
-  if (endMinute <= startMinute) {
-    throw new Error(`X_ACTIVE_HOURS must not wrap past midnight, got: ${value}`)
-  }
-
-  return { startMinute, endMinute }
+  return value
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): XPosterConfig {
-  const minIntervalMinutes = positiveInt(env, 'X_MIN_INTERVAL_MINUTES', 20)
-  const maxIntervalMinutes = positiveInt(env, 'X_MAX_INTERVAL_MINUTES', 60)
+  // The two that have no defensible default, read first so that an empty
+  // .env is answered with the most basic thing missing rather than with
+  // whichever check happens to come first in the file.
+  const profileDir = requiredString(env, 'X_PROFILE_DIR')
+  // A default here would silently be the host's zone on one machine and the
+  // operator's on another — which is the bug this replaced, not a
+  // convenience. Both the windows and the daily cap are expressed in it.
+  const timezone = requiredString(env, 'TIMEZONE')
 
-  if (minIntervalMinutes > maxIntervalMinutes) {
+  if (!env.X_WINDOWS) {
     throw new Error(
-      `X_MIN_INTERVAL_MINUTES (${minIntervalMinutes}) must not exceed ` +
-        `X_MAX_INTERVAL_MINUTES (${maxIntervalMinutes})`,
+      env.X_ACTIVE_HOURS
+        ? 'X_ACTIVE_HOURS has been replaced by X_WINDOWS, which gives each ' +
+          'window its own quota. Set X_WINDOWS=06:00-08:00x4,17:00-23:00x6 ' +
+          'and remove X_ACTIVE_HOURS and X_MAX_INTERVAL_MINUTES.'
+        : 'X_WINDOWS is required, like "06:00-08:00x4,17:00-23:00x6"',
+    )
+  }
+
+  const windows = parseWindows(env.X_WINDOWS)
+  const dailyCap = positiveInt(env, 'X_DAILY_CAP', 10)
+  const quotaTotal = windows.reduce((sum, window) => sum + window.quota, 0)
+
+  if (quotaTotal > dailyCap) {
+    // Quota that cannot be spent is a window that silently never fires,
+    // which reads as "the evening is broken" rather than as a mistake here.
+    throw new Error(
+      `The window quotas (${quotaTotal}) exceed X_DAILY_CAP (${dailyCap})`,
     )
   }
 
   return {
-    profileDir: requiredString(env, 'X_PROFILE_DIR'),
+    profileDir,
     debugPort: positiveInt(env, 'X_DEBUG_PORT', 9333),
     chromePath: env.X_CHROME_PATH || DEFAULT_CHROME_PATH,
     dryRun: (env.X_DRY_RUN ?? '').toLowerCase() === 'true',
-    minIntervalMinutes,
-    maxIntervalMinutes,
-    dailyCap: positiveInt(env, 'X_DAILY_CAP', 10),
-    activeHours: parseActiveHours(env.X_ACTIVE_HOURS),
-    // Required rather than defaulted. Both the active-hours window and the
-    // daily cap are expressed in it, and a default would silently be the
-    // host's zone on one machine and the operator's on another — which is
-    // the bug this replaced, not a convenience.
-    timezone: requiredString(env, 'TIMEZONE'),
+    minIntervalMinutes: positiveInt(env, 'X_MIN_INTERVAL_MINUTES', 20),
+    intervalJitter: fraction(env, 'X_INTERVAL_JITTER', 0.25),
+    dailyCap,
+    windows,
+    timezone,
     maxAttempts: positiveInt(env, 'X_MAX_ATTEMPTS', 3),
     discordWebhookUrl: env.DISCORD_WEBHOOK_URL || null,
   }

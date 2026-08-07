@@ -156,10 +156,10 @@ The Discord monitor will open a Chromium window. Log in to Discord manually on t
 | `X_DEBUG_PORT` | CDP port, bound to `127.0.0.1` | `9333` |
 | `X_CHROME_PATH` | Chrome binary path | macOS install path |
 | `X_DRY_RUN` | Run the full script but never click submit | `false` |
-| `X_MIN_INTERVAL_MINUTES` | Interval floor between tweets | `20` |
-| `X_MAX_INTERVAL_MINUTES` | Interval ceiling between tweets | `60` |
-| `X_DAILY_CAP` | Maximum tweets per day | `10` |
-| `X_ACTIVE_HOURS` | Local-time posting window; must not wrap past midnight | `09:00-23:00` |
+| `X_WINDOWS` | Local-time posting windows with per-window quotas, `HH:MM-HH:MMx<quota>` comma-separated; must not wrap past midnight or overlap | required |
+| `X_MIN_INTERVAL_MINUTES` | Floor under the derived gap between tweets | `20` |
+| `X_INTERVAL_JITTER` | How far a gap may stray from its target, as a fraction in `[0, 1)` | `0.25` |
+| `X_DAILY_CAP` | Backstop on tweets per day; the window quotas already sum to at most this | `10` |
 | `X_MAX_ATTEMPTS` | Retries for retryable errors | `3` |
 | `DISCORD_WEBHOOK_URL` | Where circuit-break alerts are sent | optional |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | PostgreSQL connection | required |

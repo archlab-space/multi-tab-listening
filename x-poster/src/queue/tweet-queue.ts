@@ -4,7 +4,7 @@ import type { Tweet } from 'shared'
 import { startOfDayIn } from 'shared/clock'
 import { createDb } from 'shared/db'
 import { tweets } from 'shared/schema'
-import type { PostingHistory } from './rate-limiter.js'
+import type { PostingCounts } from './rate-limiter.js'
 
 export interface EnqueueInput {
   content: string
@@ -153,7 +153,7 @@ export class TweetQueue {
   async history(
     timezone: string,
     now: Date = new Date(),
-  ): Promise<PostingHistory> {
+  ): Promise<PostingCounts> {
     const dayStart = startOfDayIn(timezone, now)
 
     const [row] = await this.db

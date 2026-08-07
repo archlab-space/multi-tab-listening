@@ -4,6 +4,7 @@ import { loadConfig } from './config.js'
 const required = {
   X_PROFILE_DIR: '/tmp/x-profile',
   TIMEZONE: 'Asia/Shanghai',
+  X_WINDOWS: '09:00-23:00x10',
 } as NodeJS.ProcessEnv
 
 describe('loadConfig', () => {
@@ -25,39 +26,62 @@ describe('loadConfig', () => {
     expect(config.debugPort).toBe(9333)
     expect(config.dryRun).toBe(false)
     expect(config.minIntervalMinutes).toBe(20)
-    expect(config.maxIntervalMinutes).toBe(60)
     expect(config.dailyCap).toBe(10)
     expect(config.maxAttempts).toBe(3)
     expect(config.discordWebhookUrl).toBeNull()
-    expect(config.activeHours).toEqual({ startMinute: 540, endMinute: 1380 })
+    expect(config.windows).toEqual([
+      { startMinute: 540, endMinute: 1380, quota: 10 },
+    ])
+    expect(config.intervalJitter).toBe(0.25)
   })
 
-  it('parses an active-hours window into minutes from midnight', () => {
-    expect(
-      loadConfig({ ...required, X_ACTIVE_HOURS: '07:30-21:15' }).activeHours,
-    ).toEqual({ startMinute: 450, endMinute: 1275 })
+  it('parses windows with their quotas', () => {
+    const config = loadConfig({
+      ...required,
+      X_WINDOWS: '06:00-08:00x4,17:00-23:00x6',
+    })
+    expect(config.windows).toEqual([
+      { startMinute: 360, endMinute: 480, quota: 4 },
+      { startMinute: 1020, endMinute: 1380, quota: 6 },
+    ])
   })
 
-  it('rejects an active-hours window that wraps past midnight', () => {
-    expect(() =>
-      loadConfig({ ...required, X_ACTIVE_HOURS: '22:00-02:00' }),
-    ).toThrow(/must not wrap past midnight/)
-  })
-
-  it('rejects a malformed active-hours window', () => {
-    expect(() => loadConfig({ ...required, X_ACTIVE_HOURS: '9-5' })).toThrow(
-      /X_ACTIVE_HOURS/,
-    )
-  })
-
-  it('rejects an interval floor above its ceiling', () => {
+  it('rejects window quotas that exceed the daily cap', () => {
+    // Quota that cannot be spent is a window that silently never fires.
     expect(() =>
       loadConfig({
         ...required,
-        X_MIN_INTERVAL_MINUTES: '90',
-        X_MAX_INTERVAL_MINUTES: '30',
+        X_WINDOWS: '06:00-08:00x6,17:00-23:00x6',
+        X_DAILY_CAP: '10',
       }),
-    ).toThrow(/X_MIN_INTERVAL_MINUTES/)
+    ).toThrow(/exceed X_DAILY_CAP/)
+  })
+
+  it('requires X_WINDOWS', () => {
+    const { X_WINDOWS: _omitted, ...withoutWindows } = required
+    expect(() => loadConfig(withoutWindows)).toThrow(/X_WINDOWS is required/)
+  })
+
+  it('names the replacement when only the old X_ACTIVE_HOURS is set', () => {
+    // A silent fall back to the old single window is the one outcome worse
+    // than refusing to start.
+    const { X_WINDOWS: _omitted, ...withoutWindows } = required
+    expect(() =>
+      loadConfig({ ...withoutWindows, X_ACTIVE_HOURS: '09:00-23:00' }),
+    ).toThrow(/X_ACTIVE_HOURS has been replaced by X_WINDOWS/)
+  })
+
+  it('defaults the interval jitter and rejects one outside [0, 1)', () => {
+    expect(loadConfig(required).intervalJitter).toBe(0.25)
+    expect(loadConfig({ ...required, X_INTERVAL_JITTER: '0' }).intervalJitter).toBe(
+      0,
+    )
+    expect(() => loadConfig({ ...required, X_INTERVAL_JITTER: '1' })).toThrow(
+      /X_INTERVAL_JITTER/,
+    )
+    expect(() => loadConfig({ ...required, X_INTERVAL_JITTER: '-0.1' })).toThrow(
+      /X_INTERVAL_JITTER/,
+    )
   })
 
   it('treats X_DRY_RUN=true as enabled and anything else as disabled', () => {

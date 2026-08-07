@@ -1,20 +1,27 @@
-import {
-  minutesIntoDayIn,
-  nextDayStartIn,
-  startOfDayIn,
-} from 'shared/clock'
 import type { XPosterConfig } from '../config.js'
-import { sampleDelay, type Rng } from '../human/delay.js'
+import type { Rng } from '../human/delay.js'
+import {
+  activeWindowAt,
+  nextDayFirstWindowStart,
+  nextWindowStartAfter,
+  windowEndAt,
+} from './windows.js'
 
 export interface PostingHistory {
   lastPostedAt: Date | null
   postedToday: number
+  /** Published inside the window containing `now`. */
+  postedInWindow: number
 }
+
+/** What the queue can count without knowing about windows. */
+export type PostingCounts = Omit<PostingHistory, 'postedInWindow'>
 
 export type RateLimitReason =
   | 'ok'
   | 'interval'
   | 'daily-cap'
+  | 'window-quota'
   | 'outside-active-hours'
 
 export interface RateLimitDecision {
@@ -59,19 +66,14 @@ export function nextGapMinutes(
   return target * (1 + (rng() * 2 - 1) * jitter)
 }
 
-function windowOpensOn(day: Date, config: XPosterConfig): Date {
-  return new Date(day.getTime() + config.activeHours.startMinute * MS_PER_MINUTE)
-}
-
 /**
- * The three gates, in the order that produces the most useful answer.
+ * The four gates, in the order that produces the most useful answer.
  *
- * Order matters: at the daily cap the honest answer is "not today", not "in
- * twenty minutes", and outside the window neither of the other two gates is
- * worth evaluating. This ordering is asserted by the tests.
- *
- * The interval is resampled on every call rather than fixed at post time, so
- * the gap between tweets carries no fixed-period signature.
+ * Order matters, and each step down is a narrower "not yet": outside every
+ * window nothing else is worth evaluating, at the daily cap the honest answer
+ * is "not today" rather than "at the next opening", and a window that has
+ * spent its allowance is "not this window" rather than "in an hour". This
+ * ordering is asserted by the tests.
  */
 export function decide(
   now: Date,
@@ -79,20 +81,12 @@ export function decide(
   config: XPosterConfig,
   rng: Rng = Math.random,
 ): RateLimitDecision {
-  const minute = minutesIntoDayIn(config.timezone, now)
+  const window = activeWindowAt(config.timezone, config.windows, now)
 
-  if (minute < config.activeHours.startMinute) {
+  if (!window) {
     return {
       allowed: false,
-      waitUntil: windowOpensOn(startOfDayIn(config.timezone, now), config),
-      reason: 'outside-active-hours',
-    }
-  }
-
-  if (minute >= config.activeHours.endMinute) {
-    return {
-      allowed: false,
-      waitUntil: windowOpensOn(nextDayStartIn(config.timezone, now), config),
+      waitUntil: nextWindowStartAfter(config.timezone, config.windows, now),
       reason: 'outside-active-hours',
     }
   }
@@ -100,16 +94,37 @@ export function decide(
   if (history.postedToday >= config.dailyCap) {
     return {
       allowed: false,
-      waitUntil: windowOpensOn(nextDayStartIn(config.timezone, now), config),
+      waitUntil: nextDayFirstWindowStart(config.timezone, config.windows, now),
       reason: 'daily-cap',
     }
   }
 
-  if (history.lastPostedAt) {
-    const requiredMs =
-      sampleDelay(config.minIntervalMinutes, config.maxIntervalMinutes, rng) *
-      MS_PER_MINUTE
-    const readyAt = new Date(history.lastPostedAt.getTime() + requiredMs)
+  const remaining = window.quota - history.postedInWindow
+  if (remaining <= 0) {
+    return {
+      allowed: false,
+      waitUntil: nextWindowStartAfter(config.timezone, config.windows, now),
+      reason: 'window-quota',
+    }
+  }
+
+  // The first post of a window has no gap to satisfy: the window opening is
+  // itself the wait, and pacing from a post made in an earlier window would
+  // charge this one for the last one's timing.
+  if (history.postedInWindow > 0 && history.lastPostedAt) {
+    const gap = Math.max(
+      config.minIntervalMinutes,
+      nextGapMinutes(
+        windowEndAt(config.timezone, window, now),
+        history.lastPostedAt,
+        remaining,
+        config.intervalJitter,
+        rng,
+      ),
+    )
+    const readyAt = new Date(
+      history.lastPostedAt.getTime() + gap * MS_PER_MINUTE,
+    )
     if (readyAt > now) {
       return { allowed: false, waitUntil: readyAt, reason: 'interval' }
     }
