@@ -6,6 +6,7 @@ import { FatalError, RetryableError, UncertainError } from '../errors.js'
 import { withClipboard } from '../human/clipboard.js'
 import { humanDelay, sampleDelay } from '../human/delay.js'
 import { elementCentre, travelTo, type Point } from '../human/mouse.js'
+import { resolveMediaPath } from '../media.js'
 import { HOME_URL, selectors } from './selectors.js'
 import { assertLoggedIn } from './session.js'
 
@@ -16,6 +17,36 @@ export interface PostResult {
 
 /** Where the cursor starts each session. Somewhere unremarkable. */
 const CURSOR_ORIGIN: Point = { x: 420, y: 300 }
+
+/** How much of the draft has to be found in the composer to call it pasted. */
+const HEAD_LENGTH = 20
+
+/** Every run of whitespace becomes one space, so two spellings compare equal. */
+function flatten(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Whether the composer is holding the text we pasted.
+ *
+ * Compared with whitespace collapsed on both sides rather than literally.
+ * `digest` and `metric` assemble to multi-line drafts, X renders each
+ * paragraph as its own Draft.js block, and `innerText` joins those blocks
+ * with a single newline — so the source's `\n\n` never comes back verbatim.
+ * A literal comparison therefore rejected every `metric` post (its 40-char
+ * field puts the break inside the first 20 characters every time) while
+ * passing every single-line `take` and `question`. The text was in the
+ * composer throughout; only its whitespace was spelled differently.
+ *
+ * The check still has to fail closed — it is what stands between a blocked
+ * paste or a stale editor selector and a click on submit — so an empty
+ * composer is never a match, whatever the draft.
+ */
+export function pasteLanded(typed: string, content: string): boolean {
+  const head = flatten(content).slice(0, HEAD_LENGTH)
+  if (head === '') return false
+  return flatten(typed).includes(head)
+}
 
 async function pointOn(locator: Locator, what: string): Promise<Point> {
   const box = await locator.boundingBox()
@@ -100,9 +131,7 @@ export async function postTweet(
 
   // Confirm the paste actually landed before going anywhere near submit.
   await humanDelay(300, 900)
-  const typed = (await editor.innerText()).trim()
-  const head = content.trim().slice(0, 20)
-  if (!typed.includes(head)) {
+  if (!pasteLanded(await editor.innerText(), content)) {
     throw new FatalError(
       'The pasted text did not appear in the composer. The clipboard paste ' +
         'may have been blocked, or the editor selector is out of date.',
@@ -111,7 +140,10 @@ export async function postTweet(
 
   // 4b. Attach the card, if this tweet has one.
   if (mediaPath) {
-    await page.locator(selectors.fileInput).first().setInputFiles(mediaPath)
+    // The column is relative to whichever package rendered the card, so it
+    // cannot be handed to setInputFiles as-is from this working directory.
+    const file = await resolveMediaPath(mediaPath)
+    await page.locator(selectors.fileInput).first().setInputFiles(file)
 
     try {
       await page
@@ -123,7 +155,7 @@ export async function postTweet(
       // and retrying is safe. Classifying this as uncertain would strand a
       // healthy tweet awaiting manual review.
       throw new RetryableError(
-        `The image at ${mediaPath} never finished uploading`,
+        `The image at ${file} never finished uploading`,
         { cause: error },
       )
     }
@@ -132,7 +164,7 @@ export async function postTweet(
     // same instant, and this is also just what a person does after attaching
     // something.
     await humanDelay(900, 2400)
-    logger.debug('Attached media', { mediaPath })
+    logger.debug('Attached media', { mediaPath, file })
   }
 
   // 5. Re-read it, the way a person does before posting.
