@@ -150,7 +150,11 @@ async function tick(): Promise<void> {
     if (error instanceof RetryableError) {
       if (tweet.attempts >= config.maxAttempts) {
         await queue.markFailed(tweet.id, error.message)
-        logger.error('Giving up', { id: tweet.id, attempts: tweet.attempts })
+        logger.error('Giving up', {
+          id: tweet.id,
+          attempts: tweet.attempts,
+          error: error.message,
+        })
         return
       }
       const retryAt = new Date(Date.now() + backoffMs(tweet.attempts))
@@ -158,6 +162,7 @@ async function tick(): Promise<void> {
       logger.warn('Retrying later', {
         id: tweet.id,
         retryAt: retryAt.toISOString(),
+        error: error.message,
       })
       return
     }

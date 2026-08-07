@@ -5,9 +5,18 @@
  * is paid. It is deliberately the only module in the package that contains a
  * selector string.
  *
- * Verified against the live site on 2026-08-04 (Chrome 150, logged in).
- * If a run fails with "all selectors missing", re-verify before guessing —
- * `x-poster/scratch-recon.ts` in the git history shows how.
+ * Verified against the live site on 2026-08-04 (Chrome 150, logged in), and
+ * `mediaReady` again on 2026-08-07 — the composer with an image attached is
+ * a state the first pass could not reach.
+ *
+ * If a run fails with "all selectors missing", re-verify before guessing.
+ * What works: a throwaway script (gitignored as `scratch-*.ts`) that drives
+ * the dedicated profile into the state in question, then prints `.count()`
+ * for a list of candidate selectors on a timer. Counting is enough, and it
+ * avoids page.evaluate(), which the rest of this package forbids because
+ * injected script is detectable and this runs against the live account.
+ * Check `.waitFor({ state: 'visible' })` on the winner too — the composer
+ * has nodes that are present long before they are visible.
  */
 export const selectors = {
   /** Side-nav compose button. Opens the modal composer. */
@@ -49,13 +58,28 @@ export const selectors = {
   fileInput: '[role="dialog"] input[type="file"][data-testid="fileInput"]',
 
   /**
-   * Appears once an attachment has finished uploading and is previewable.
+   * The attachment strip. X renders it only once the upload has been
+   * committed, not on local preview, so its presence is the signal that
+   * submitting is safe — submitting earlier posts without the image.
    *
-   * X disables the submit button while an upload is in flight, so this is
-   * the signal that submitting is safe. Submitting early either posts
-   * without the image or throws.
+   * Verified 2026-08-07 by sampling the open composer every 40ms after
+   * setInputFiles: for the first 720ms the dialog holds a third
+   * role="progressbar" and no attachments node; at 760ms that progressbar is
+   * gone and this node is there, in the same sample. The other two
+   * progressbars are permanent furniture — one of them is the character
+   * counter — so counting them is not a usable signal.
+   *
+   * Replaces [data-testid="removeMedia"], which is no longer anywhere in the
+   * composer. That was the only selector in this file which requires an
+   * attached image to appear, and therefore the only one no successful post
+   * had ever exercised: every card-bearing tweet died waiting on it, which
+   * read as "images are broken" rather than "this testid is stale".
+   *
+   * Deliberately not [aria-label="Remove media"], which appears in the same
+   * sample and would work today: that label is English, and it moves with
+   * the profile's display language.
    */
-  mediaReady: '[role="dialog"] [data-testid="removeMedia"]',
+  mediaReady: '[role="dialog"] [data-testid="attachments"]',
 
   /** Any tweet in the timeline. Used to confirm the timeline rendered. */
   tweetArticle: 'article[data-testid="tweet"]',
