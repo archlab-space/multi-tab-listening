@@ -37,6 +37,37 @@ export interface BlogListItem {
   source_id: string
   occurred_at: string | null
   generated_at: string
+  signal: BlogSignal | null
+}
+
+/**
+ * Whatever the API attached to a dispatch as evidence of interest.
+ *
+ * Deliberately not a discriminated union. Three kinds exist today
+ * (`hn_points`, `momentum`, `youtube`) and more will follow; a union makes
+ * an unknown kind either a compile error or a silent fall-through, and this
+ * service should simply treat a kind it does not understand as no signal.
+ */
+export type BlogSignal = { type: string; [key: string]: unknown }
+
+/**
+ * The signal as a single comparable number, or null when there is none.
+ *
+ * `youtube` carries only a channel name, so it collapses to null and takes
+ * the same path as a dispatch that arrived without a signal at all.
+ */
+export function heatOf(signal: BlogSignal | null): number | null {
+  if (!signal) return null
+  if (signal.type === 'hn_points' && typeof signal.value === 'number') {
+    return signal.value
+  }
+  if (
+    signal.type === 'momentum' &&
+    typeof signal.stars_per_day === 'number'
+  ) {
+    return signal.stars_per_day
+  }
+  return null
 }
 
 export interface BlogReference {
@@ -44,6 +75,12 @@ export interface BlogReference {
   title: string
   url?: string
   html_url?: string
+  /**
+   * The join key for a gh_project dispatch: the same identifier that
+   * `GET /projects/ghp:{identifier}` takes. Only gh_project references
+   * carry it; everything else leaves it undefined.
+   */
+  identifier?: string
 }
 
 export interface BlogDetail extends BlogListItem {
@@ -90,8 +127,9 @@ const MAX_LIMIT = 100
  * The AgentLens wire shapes live in this file and nowhere else, so an API
  * change touches one module. Normalisation is `candidates.ts`'s job.
  *
- * `/query` is deliberately not implemented: its quota is 100 calls per 30
- * days, which cannot sustain a service running every two hours.
+ * `/query` (semantic search) is not implemented here yet. It is metered but
+ * not rate-limited — the 100 free calls are a one-off grant, not a monthly
+ * allowance — so the constraint on using it is cost, not throughput.
  */
 export class AgentLensClient {
   constructor(

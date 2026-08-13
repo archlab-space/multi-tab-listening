@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AgentLensClient, AgentLensError } from './agentlens.js'
+import { AgentLensClient, AgentLensError, heatOf } from './agentlens.js'
 import {
   blogDetailResponse,
   blogListResponse,
@@ -168,5 +168,31 @@ describe('AgentLensClient', () => {
       retry: 'quota',
       retryAfterMs: null,
     })
+  })
+})
+
+describe('heatOf', () => {
+  it('reads the HN score', () => {
+    expect(heatOf({ type: 'hn_points', value: 803 })).toBe(803)
+  })
+
+  it('reads project momentum as stars per day', () => {
+    expect(heatOf({ type: 'momentum', stars_per_day: 202 })).toBe(202)
+  })
+
+  it('has no heat for a null signal', () => {
+    expect(heatOf(null)).toBeNull()
+  })
+
+  it('has no heat for a youtube signal, which only names a channel', () => {
+    expect(heatOf({ type: 'youtube', channel: 'Stanford Online' })).toBeNull()
+  })
+
+  it('has no heat for a signal kind the API added after this was written', () => {
+    expect(heatOf({ type: 'reddit_upvotes', value: 91 })).toBeNull()
+  })
+
+  it('has no heat when the expected field is the wrong type', () => {
+    expect(heatOf({ type: 'hn_points', value: '803' })).toBeNull()
   })
 })
