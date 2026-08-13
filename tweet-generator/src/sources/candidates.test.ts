@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   blogToCandidate,
   formatCount,
-  projectToCandidate,
 } from './candidates.js'
 import {
   blogDetailResponse,
   digestDetailResponse,
+  projectBlogDetailResponse,
   projectDetailResponse,
 } from './agentlens.fixtures.js'
 import type { BlogDetail, ProjectDetail } from './agentlens.js'
@@ -79,34 +79,41 @@ describe('blogToCandidate', () => {
   })
 })
 
-describe('projectToCandidate', () => {
-  it('formats every hard metric as a quotable string', () => {
-    const candidate = projectToCandidate(project)
+describe('blogToCandidate with a hydrated project', () => {
+  it('carries the entities it found, for the comparison finder', () => {
+    const candidate = blogToCandidate(blogDetailResponse as BlogDetail)
+    expect(candidate.entities).toContain('LFM2.5-2.6B')
+  })
 
+  it('hydrates a project dispatch with the numbers a blog does not carry', () => {
+    const candidate = blogToCandidate(
+      projectBlogDetailResponse as BlogDetail,
+      projectDetailResponse as ProjectDetail,
+    )
     expect(candidate.facts).toContain('18.4k stars')
     expect(candidate.facts).toContain('+443 stars/day')
-    expect(candidate.facts).toContain('TypeScript')
-    expect(candidate.facts).toContain('MIT')
-    expect(candidate.facts).toContain('diegosouzapw/OmniRoute')
   })
 
-  it('keys on the star bucket, not on the project alone', () => {
-    // A project sits on the leaderboard for weeks. A permanent key would
-    // allow one post per repo, ever.
-    expect(projectToCandidate(project).dedupeKey).toBe(
-      'agentlens:project:ghp:diegosouzapw/OmniRoute:stars-10k',
+  it('still produces a candidate when the project has left the leaderboard', () => {
+    // /projects 404s for anything no longer relevant+active. That is a
+    // dispatch with no metrics, not a dispatch that cannot be posted.
+    const candidate = blogToCandidate(
+      projectBlogDetailResponse as BlogDetail,
+      null,
     )
+    expect(candidate.facts).toEqual([])
+    expect(candidate.title).toContain('ante')
   })
 
-  it('uses the explainer as the body and the repo as the source link', () => {
-    const candidate = projectToCandidate(project)
-    expect(candidate.body).toContain('290 providers')
-    expect(candidate.sourceUrl).toBe('https://github.com/diegosouzapw/OmniRoute')
-  })
-
-  it('omits a missing language and licence rather than emitting "null"', () => {
-    const bare: ProjectDetail = { ...project, language: null, license: null }
-    const facts = projectToCandidate(bare).facts
-    expect(facts.some((f) => f.includes('null'))).toBe(false)
+  it('keys a project dispatch on the dispatch, not on a star bucket', () => {
+    // Bucketing existed to let one repo be posted again after it grew. On
+    // the blogs stream each dispatch is already a distinct event.
+    const candidate = blogToCandidate(
+      projectBlogDetailResponse as BlogDetail,
+      projectDetailResponse as ProjectDetail,
+    )
+    expect(candidate.dedupeKey).toBe(
+      `agentlens:blog:${projectBlogDetailResponse.id}`,
+    )
   })
 })

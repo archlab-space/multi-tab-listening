@@ -1,5 +1,5 @@
 import type { SourceKind } from '../config.js'
-import { starBucket } from '../select/dedupe.js'
+import { scoreEntities } from '../select/entities.js'
 import type { BlogDetail, ProjectDetail } from './agentlens.js'
 
 /**
@@ -25,6 +25,12 @@ export interface Candidate {
   sourceUrl: string | null
   freshness: Date
   dedupeKey: string
+  /**
+   * The searchable names in this dispatch. Persisted on the tweet row so a
+   * later post can ask what we have already written about and build a
+   * comparison out of it.
+   */
+  entities: string[]
 }
 
 /** `18420` → `18.4k`. Past 100k the decimal is noise, so it is dropped. */
@@ -34,44 +40,43 @@ export function formatCount(n: number): string {
   return `${Math.round(n / 1000)}k`
 }
 
-export function blogToCandidate(blog: BlogDetail): Candidate {
+/**
+ * `project` is the `/projects` record for a gh_project dispatch, or null.
+ *
+ * A blog carries no stars, forks, or licence, and `facts` is the validator's
+ * whitelist of figures the model is allowed to quote. Without hydration
+ * every post about a repository loses the ability to state a single number.
+ * Null is the ordinary case for a repo that has since left the leaderboard,
+ * and it costs the post its metrics, not its existence.
+ */
+export function blogToCandidate(
+  blog: BlogDetail,
+  project?: ProjectDetail | null,
+): Candidate {
   const reference = blog.references?.[0]
+  const facts: string[] = []
+
+  if (project) {
+    facts.push(
+      project.full_name,
+      `${formatCount(project.stars)} stars`,
+      `+${Math.round(project.star_velocity_per_day)} stars/day`,
+      `${formatCount(project.forks)} forks`,
+    )
+    if (project.language) facts.push(project.language)
+    if (project.license) facts.push(project.license)
+  }
+
   return {
     kind: blog.job_type,
     externalId: blog.id,
     title: blog.title,
     summary: blog.summary,
     body: blog.body_markdown,
-    // Dispatches carry no structured metrics, so the whitelist is empty and
-    // the validator falls back to the title, summary, and body — which is
-    // the correct scope anyway: the check exists to catch invented numbers,
-    // not quoted ones.
-    facts: [],
+    facts,
     sourceUrl: reference?.html_url ?? reference?.url ?? null,
     freshness: new Date(blog.generated_at),
     dedupeKey: `agentlens:blog:${blog.id}`,
-  }
-}
-
-export function projectToCandidate(project: ProjectDetail): Candidate {
-  const facts = [
-    project.full_name,
-    `${formatCount(project.stars)} stars`,
-    `+${Math.round(project.star_velocity_per_day)} stars/day`,
-    `${formatCount(project.forks)} forks`,
-  ]
-  if (project.language) facts.push(project.language)
-  if (project.license) facts.push(project.license)
-
-  return {
-    kind: 'gh_project',
-    externalId: project.id,
-    title: project.full_name,
-    summary: project.summary,
-    body: project.explainer_md,
-    facts,
-    sourceUrl: project.html_url,
-    freshness: new Date(project.pushed_at),
-    dedupeKey: `agentlens:project:${project.id}:${starBucket(project.stars)}`,
+    entities: scoreEntities(`${blog.title} ${blog.summary}`).entities,
   }
 }
