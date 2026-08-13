@@ -118,7 +118,7 @@ body {
 .foot {
   margin-top: 64px; padding-top: 32px;
   border-top: 2px solid ${palette.rule};
-  display: flex; justify-content: flex-end;
+  display: flex; justify-content: flex-end; gap: 14px;
   font-family: 'CardMono', monospace;
   font-size: 30px; color: ${palette.muted};
 }
