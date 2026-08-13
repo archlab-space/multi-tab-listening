@@ -3,27 +3,39 @@ import { loadDbConfig, type DbConfig } from 'shared/db'
 
 dotenv.config()
 
-/** The five AgentLens dispatch kinds this service draws from. */
+/** The four AgentLens dispatch kinds this service draws from. */
 export type SourceKind =
   | 'lab_article'
   | 'gh_project'
   | 'x_digest'
   | 'hn_story'
-  | 'youtube_video'
 
 /**
- * Priority order, highest first. Breaks ties in the quota picker and decides
- * the order the caller falls through when a pool is empty.
+ * What a post is for, which is a different question from where it came from.
+ *
+ * Quota lives here rather than on the kind because `hn_story` and `x_digest`
+ * do the same job — they are what is being talked about right now — while
+ * differing entirely in whether the API can tell us how loudly.
  */
-export const SOURCE_PRIORITY: readonly SourceKind[] = [
-  'lab_article',
-  'gh_project',
-  'x_digest',
-  'hn_story',
-  'youtube_video',
-]
+export type Tier = 'project' | 'hot' | 'labs'
 
-export type Quota = Record<SourceKind, number>
+export const TIER_OF_KIND: Record<SourceKind, Tier> = {
+  gh_project: 'project',
+  hn_story: 'hot',
+  x_digest: 'hot',
+  lab_article: 'labs',
+}
+
+/** Breaks ties in the quota picker when two tiers have equal headroom. */
+export const TIER_PRIORITY: readonly Tier[] = ['hot', 'project', 'labs']
+
+export const KINDS_OF_TIER: Record<Tier, readonly SourceKind[]> = {
+  project: ['gh_project'],
+  hot: ['x_digest', 'hn_story'],
+  labs: ['lab_article'],
+}
+
+export type Quota = Record<Tier, number>
 
 export interface LlmConfig {
   baseUrl: string
@@ -41,7 +53,14 @@ export interface GeneratorConfig {
   emptyPoolMinutes: number
   dailyCap: number
   quota: Quota
-  projectCooldownDays: number
+  /**
+   * How much of the ranking is entity salience versus raw discussion volume.
+   * Above 0.5 on purpose: a story can be the loudest thing on HN and still
+   * be about a pen plotter.
+   */
+  entityWeight: number
+  /** Only the comparison finder needs it, and only from phase two. */
+  agentlensApiKey: string | null
   projectMinVelocityPerDay: number
   timezone: string
   maxRounds: number
@@ -93,11 +112,9 @@ export function loadConfig(
   }
 
   const quota: Quota = {
-    lab_article: nonNegativeInt(env, 'QUOTA_LAB', 4),
-    gh_project: nonNegativeInt(env, 'QUOTA_PROJECT', 3),
-    x_digest: nonNegativeInt(env, 'QUOTA_DIGEST', 1),
-    hn_story: nonNegativeInt(env, 'QUOTA_HN', 1),
-    youtube_video: nonNegativeInt(env, 'QUOTA_YOUTUBE', 1),
+    hot: nonNegativeInt(env, 'QUOTA_HOT', 5),
+    project: nonNegativeInt(env, 'QUOTA_PROJECT', 3),
+    labs: nonNegativeInt(env, 'QUOTA_LABS', 2),
   }
 
   const dailyCap = positiveInt(env, 'DAILY_CAP', 10)
@@ -132,7 +149,8 @@ export function loadConfig(
     emptyPoolMinutes: positiveInt(env, 'EMPTY_POOL_MINUTES', 30),
     dailyCap,
     quota,
-    projectCooldownDays: nonNegativeInt(env, 'PROJECT_COOLDOWN_DAYS', 7),
+    entityWeight: Number(env.ENTITY_WEIGHT ?? '0.7'),
+    agentlensApiKey: env.AGENTLENS_API_KEY || null,
     projectMinVelocityPerDay: nonNegativeInt(
       env,
       'PROJECT_MIN_VELOCITY_PER_DAY',
