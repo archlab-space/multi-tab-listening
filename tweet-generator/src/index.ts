@@ -16,7 +16,7 @@ import {
 import { loadBannedPhrases, type BannedPhrases } from './llm/validate.js'
 import { shouldReplenish, waitAfterMs, type CycleOutcome } from './pace.js'
 import { selectCandidate, type PoolDeps } from './select/pool.js'
-import { orderKinds } from './select/quota.js'
+import { orderTiers } from './select/quota.js'
 import {
   fastRetryDelayMs,
   retryAfterMsOfError,
@@ -124,7 +124,7 @@ async function tick(): Promise<CycleOutcome> {
 
   const dayStart = startOfDayIn(config.timezone, now)
   const usage = await store.usageSince(dayStart)
-  const order = orderKinds(now, usage, config)
+  const order = orderTiers(now, usage, config)
 
   if (order.length === 0) {
     logger.info('Nothing left to spend today', { total: usage.total })
@@ -133,10 +133,10 @@ async function tick(): Promise<CycleOutcome> {
 
   let gaveUp = 0
 
-  for (const kind of order) {
-    const candidate = await selectCandidate(kind, now, config, deps)
+  for (const tier of order) {
+    const candidate = await selectCandidate(tier, now, config, deps)
     if (!candidate) {
-      logger.debug('Pool empty, falling through', { kind })
+      logger.debug('Pool empty, falling through', { tier })
       continue
     }
 

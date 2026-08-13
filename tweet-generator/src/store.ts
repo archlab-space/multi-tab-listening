@@ -14,17 +14,11 @@ import type { Pool } from 'pg'
 import type { TweetArchetype } from 'shared'
 import { createDb } from 'shared/db'
 import { generationAttempts, tweets } from 'shared/schema'
-import { SOURCE_PRIORITY, type SourceKind } from './config.js'
+import { TIER_OF_KIND, type SourceKind, type Tier } from './config.js'
 import type { QuotaUsage } from './select/quota.js'
 
 function emptyUsage(): QuotaUsage['used'] {
-  return {
-    lab_article: 0,
-    gh_project: 0,
-    x_digest: 0,
-    hn_story: 0,
-    youtube_video: 0,
-  }
+  return { project: 0, hot: 0, labs: 0 }
 }
 
 export interface EnqueueInput {
@@ -97,9 +91,11 @@ export class GeneratorStore {
     let total = 0
     for (const row of rows) {
       total += row.count
-      if ((SOURCE_PRIORITY as readonly string[]).includes(row.source ?? '')) {
-        used[row.source as SourceKind] = row.count
-      }
+      const tier = TIER_OF_KIND[row.source as SourceKind] as Tier | undefined
+      // A row whose source predates the tier split, or names the retired
+      // youtube kind, still counts toward the daily cap but belongs to no
+      // tier's allowance.
+      if (tier) used[tier] += row.count
     }
     return { used, total }
   }
@@ -153,24 +149,6 @@ export class GeneratorStore {
       .from(tweets)
 
     return row?.at ?? null
-  }
-
-  async projectPostedSince(sourceRef: string, since: Date): Promise<boolean> {
-    // One row and a presence check rather than asking Postgres for EXISTS.
-    // LIMIT 1 stops the scan at the same point EXISTS would.
-    const [row] = await this.db
-      .select({ id: tweets.id })
-      .from(tweets)
-      .where(
-        and(
-          eq(tweets.sourceRef, sourceRef),
-          isNotNull(tweets.postedAt),
-          gte(tweets.postedAt, since),
-        ),
-      )
-      .limit(1)
-
-    return row !== undefined
   }
 
   async failureCounts(externalIds: string[]): Promise<Map<string, number>> {

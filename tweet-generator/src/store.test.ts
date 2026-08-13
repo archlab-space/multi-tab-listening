@@ -72,13 +72,13 @@ describe('usageSince', () => {
   it('counts nothing on an empty day', async () => {
     const usage = await store.usageSince(new Date(Date.now() + 60_000))
     expect(usage.total).toBe(0)
-    expect(usage.used.lab_article).toBe(0)
+    expect(usage.used.labs).toBe(0)
   })
 
   // usageSince counts the whole day by design, so these assert deltas. An
   // absolute count would pass only while the table happens to hold nothing
   // but test rows, and fail forever after the first real tweet is queued.
-  it('counts rows per source and in total', async () => {
+  it('counts rows per tier and in total', async () => {
     const before = await store.usageSince(dayStart)
 
     await store.enqueue({
@@ -98,9 +98,9 @@ describe('usageSince', () => {
     })
 
     const after = await store.usageSince(dayStart)
-    expect(after.used.lab_article - before.used.lab_article).toBe(2)
-    expect(after.used.hn_story - before.used.hn_story).toBe(1)
-    expect(after.used.gh_project - before.used.gh_project).toBe(0)
+    expect(after.used.labs - before.used.labs).toBe(2)
+    expect(after.used.hot - before.used.hot).toBe(1)
+    expect(after.used.project - before.used.project).toBe(0)
     expect(after.total - before.total).toBe(3)
   })
 
@@ -120,7 +120,7 @@ describe('usageSince', () => {
     )
 
     const after = await store.usageSince(dayStart)
-    expect(after.used.lab_article - before.used.lab_article).toBe(1)
+    expect(after.used.labs - before.used.labs).toBe(1)
   })
 })
 
@@ -168,30 +168,6 @@ describe('lastEnqueuedAt', () => {
     const at = await store.lastEnqueuedAt()
     expect(at).not.toBeNull()
     expect(Date.now() - at!.getTime()).toBeLessThan(60_000)
-  })
-})
-
-describe('projectPostedSince', () => {
-  it('is false when the project has never been posted', async () => {
-    expect(await store.projectPostedSince('ghp:a/b', new Date(0))).toBe(false)
-  })
-
-  it('is true within the cooldown and false outside it', async () => {
-    await store.enqueue({
-      content: 'a',
-      dedupeKey: 'test:p1',
-      source: 'gh_project',
-      sourceRef: 'test:ghp:a/b',
-    })
-    await markPosted('test:p1')
-
-    expect(await store.projectPostedSince('test:ghp:a/b', dayStart)).toBe(true)
-    expect(
-      await store.projectPostedSince(
-        'test:ghp:a/b',
-        new Date(Date.now() + 60_000),
-      ),
-    ).toBe(false)
   })
 })
 
