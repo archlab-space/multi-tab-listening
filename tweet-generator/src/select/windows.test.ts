@@ -16,21 +16,12 @@ describe('windowStart', () => {
     )
   })
 
-  it('gives YouTube a week', () => {
-    // Supply is bursty — zero one day, eleven the next — and a deep-dive
-    // keeps for a week. A 24h window would leave the pool empty most days.
-    expect(windowStart('youtube_video', now)).toEqual(
-      new Date('2026-07-29T12:00:00.000Z'),
-    )
-  })
-
   it('has a window for every source kind', () => {
     expect(Object.keys(WINDOW_HOURS).sort()).toEqual([
       'gh_project',
       'hn_story',
       'lab_article',
       'x_digest',
-      'youtube_video',
     ])
   })
 })

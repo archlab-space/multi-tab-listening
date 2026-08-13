@@ -1,17 +1,14 @@
-import type { GeneratorConfig, SourceKind } from '../config.js'
+import type { GeneratorConfig, SourceKind, Tier } from '../config.js'
+import { KINDS_OF_TIER } from '../config.js'
 import type {
   BlogDetail,
   BlogListItem,
   ProjectDetail,
-  ProjectListItem,
 } from '../sources/agentlens.js'
-import {
-  blogToCandidate,
-  projectToCandidate,
-  type Candidate,
-} from '../sources/candidates.js'
-import { starBucket } from './dedupe.js'
+import { heatOf } from '../sources/agentlens.js'
+import { blogToCandidate, type Candidate } from '../sources/candidates.js'
 import { passesNicheGate } from './niche.js'
+import { rankWithinTier } from './rank.js'
 import { windowStart } from './windows.js'
 
 /**
@@ -22,96 +19,79 @@ import { windowStart } from './windows.js'
 export interface PoolDeps {
   listBlogs(jobType: SourceKind, limit?: number): Promise<BlogListItem[]>
   getBlog(id: string): Promise<BlogDetail>
-  listProjects(limit?: number): Promise<ProjectListItem[]>
-  getProject(id: string): Promise<ProjectDetail>
+  /** Null when the repo has left the leaderboard; /projects 404s for those. */
+  getProject(id: string): Promise<ProjectDetail | null>
   knownDedupeKeys(keys: string[]): Promise<Set<string>>
   failureCounts(externalIds: string[]): Promise<Map<string, number>>
-  projectPostedSince(sourceRef: string, since: Date): Promise<boolean>
 }
 
 const MAX_FAILURES = 3
-const MS_PER_DAY = 86_400_000
 
-async function selectBlog(
-  kind: SourceKind,
+/**
+ * The star-velocity floor, rebuilt on the blogs stream.
+ *
+ * It used to live on the /projects path, where the leaderboard had already
+ * sorted by momentum. Newest-first on /blogs has not: a live sample ran
+ * 13, 2, 76, 202, 1 stars per day. Dropping this check when the streams
+ * merged would have made selection worse than the thing it replaced.
+ */
+function passesVelocityFloor(
+  item: BlogListItem,
+  config: GeneratorConfig,
+): boolean {
+  if (item.job_type !== 'gh_project') return true
+  const velocity = heatOf(item.signal)
+  return velocity !== null && velocity >= config.projectMinVelocityPerDay
+}
+
+export async function selectCandidate(
+  tier: Tier,
   now: Date,
+  config: GeneratorConfig,
   deps: PoolDeps,
 ): Promise<Candidate | null> {
-  const since = windowStart(kind, now)
+  const batches = await Promise.all(
+    KINDS_OF_TIER[tier].map(async (kind) => {
+      const since = windowStart(kind, now)
+      return (await deps.listBlogs(kind)).filter(
+        (item) => new Date(item.generated_at) >= since,
+      )
+    }),
+  )
 
-  const items = (await deps.listBlogs(kind))
-    .filter((item) => new Date(item.generated_at) >= since)
+  const items = batches
+    .flat()
     .filter((item) => passesNicheGate(`${item.title} ${item.summary}`))
-    .sort(
-      (a, b) =>
-        new Date(b.generated_at).getTime() - new Date(a.generated_at).getTime(),
-    )
+    .filter((item) => passesVelocityFloor(item, config))
 
   if (items.length === 0) return null
 
-  const known = await deps.knownDedupeKeys(
-    items.map((item) => `agentlens:blog:${item.id}`),
-  )
-  const failures = await deps.failureCounts(items.map((item) => item.id))
+  // Ranked as one batch because they are one tier: normalising per tier is
+  // what keeps a project's 1200 stars/day from being compared against an
+  // HN story's 803 points, two numbers that share no scale.
+  const ranked = rankWithinTier(items, config.entityWeight)
 
-  const winner = items.find(
-    (item) =>
-      !known.has(`agentlens:blog:${item.id}`) &&
-      (failures.get(item.id) ?? 0) < MAX_FAILURES,
+  const known = await deps.knownDedupeKeys(
+    ranked.map((entry) => `agentlens:blog:${entry.item.id}`),
+  )
+  const failures = await deps.failureCounts(
+    ranked.map((entry) => entry.item.id),
+  )
+
+  const winner = ranked.find(
+    (entry) =>
+      !known.has(`agentlens:blog:${entry.item.id}`) &&
+      (failures.get(entry.item.id) ?? 0) < MAX_FAILURES,
   )
   if (!winner) return null
 
   // Bodies cost one request each, so only the selected item is fetched.
-  return blogToCandidate(await deps.getBlog(winner.id))
-}
+  const blog = await deps.getBlog(winner.item.id)
+  const identifier = blog.references?.[0]?.identifier
+  const project =
+    blog.job_type === 'gh_project' && identifier
+      ? await deps.getProject(`ghp:${identifier}`)
+      : null
 
-async function selectProject(
-  now: Date,
-  config: GeneratorConfig,
-  deps: PoolDeps,
-): Promise<Candidate | null> {
-  const items = (await deps.listProjects())
-    .filter(
-      (item) => item.star_velocity_per_day >= config.projectMinVelocityPerDay,
-    )
-    .filter((item) =>
-      passesNicheGate(
-        `${item.full_name} ${item.description ?? ''} ${item.summary}`,
-      ),
-    )
-    .sort((a, b) => b.momentum_score - a.momentum_score)
-
-  if (items.length === 0) return null
-
-  const known = await deps.knownDedupeKeys(
-    items.map((item) => `agentlens:project:${item.id}:${starBucket(item.stars)}`),
-  )
-  const failures = await deps.failureCounts(items.map((item) => item.id))
-  const cooldownStart = new Date(
-    now.getTime() - config.projectCooldownDays * MS_PER_DAY,
-  )
-
-  for (const item of items) {
-    const key = `agentlens:project:${item.id}:${starBucket(item.stars)}`
-    if (known.has(key)) continue
-    if ((failures.get(item.id) ?? 0) >= MAX_FAILURES) continue
-    // A project can straddle a bucket boundary; the cooldown is what stops
-    // it posting twice in a week on the strength of that alone.
-    if (await deps.projectPostedSince(item.id, cooldownStart)) continue
-
-    return projectToCandidate(await deps.getProject(item.id))
-  }
-
-  return null
-}
-
-export function selectCandidate(
-  kind: SourceKind,
-  now: Date,
-  config: GeneratorConfig,
-  deps: PoolDeps,
-): Promise<Candidate | null> {
-  return kind === 'gh_project'
-    ? selectProject(now, config, deps)
-    : selectBlog(kind, now, deps)
+  return blogToCandidate(blog, project)
 }

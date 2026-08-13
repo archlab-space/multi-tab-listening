@@ -4,8 +4,6 @@ import { selectCandidate, type PoolDeps } from './pool.js'
 import type {
   BlogDetail,
   BlogListItem,
-  ProjectDetail,
-  ProjectListItem,
 } from '../sources/agentlens.js'
 
 const config = loadConfig({
@@ -25,6 +23,7 @@ function blogItem(overrides: Partial<BlogListItem> = {}): BlogListItem {
     source_id: 'lab:openai',
     occurred_at: null,
     generated_at: '2026-08-05T05:00:00.000Z',
+    signal: null,
     ...overrides,
   }
 }
@@ -37,34 +36,37 @@ function deps(overrides: Partial<PoolDeps> = {}): PoolDeps {
   return {
     listBlogs: vi.fn().mockResolvedValue([blogItem()]),
     getBlog: vi.fn(async (id: string) => blogDetail(blogItem({ id }))),
-    listProjects: vi.fn().mockResolvedValue([] as ProjectListItem[]),
-    getProject: vi.fn() as unknown as (id: string) => Promise<ProjectDetail>,
+    getProject: vi.fn().mockResolvedValue(null),
     knownDedupeKeys: vi.fn().mockResolvedValue(new Set<string>()),
     failureCounts: vi.fn().mockResolvedValue(new Map<string, number>()),
-    projectPostedSince: vi.fn().mockResolvedValue(false),
     ...overrides,
   }
 }
 
 describe('selectCandidate', () => {
-  it('returns the freshest eligible blog', async () => {
-    const older = blogItem({
-      id: 'old',
-      generated_at: '2026-08-05T01:00:00.000Z',
-    })
-    const newer = blogItem({
-      id: 'new',
+  it('ranks the more searchable item above a vague one', async () => {
+    // Newest-first is gone: within a tier the pool orders by entity
+    // salience and heat, so the fresher but unsearchable item no longer
+    // wins.
+    const vague = blogItem({
+      id: 'vague',
+      title: 'Why Tiny JPEGs Look Different in Chrome',
       generated_at: '2026-08-05T05:00:00.000Z',
+    })
+    const dense = blogItem({
+      id: 'dense',
+      title: 'Anthropic ships a new Claude endpoint',
+      generated_at: '2026-08-05T01:00:00.000Z',
     })
 
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
-      deps({ listBlogs: vi.fn().mockResolvedValue([older, newer]) }),
+      deps({ listBlogs: vi.fn().mockResolvedValue([vague, dense]) }),
     )
 
-    expect(candidate!.externalId).toBe('new')
+    expect(candidate!.externalId).toBe('dense')
   })
 
   it('skips items already in the queue, promoting the runner-up', async () => {
@@ -80,7 +82,7 @@ describe('selectCandidate', () => {
     })
 
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({
@@ -97,7 +99,7 @@ describe('selectCandidate', () => {
   it('skips items outside the freshness window', async () => {
     const stale = blogItem({ generated_at: '2026-07-01T00:00:00.000Z' })
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({ listBlogs: vi.fn().mockResolvedValue([stale]) }),
@@ -108,7 +110,7 @@ describe('selectCandidate', () => {
   it('skips items the niche gate rejects', async () => {
     const crypto = blogItem({ title: 'AI × Crypto Roundup: agent payments' })
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({ listBlogs: vi.fn().mockResolvedValue([crypto]) }),
@@ -118,7 +120,7 @@ describe('selectCandidate', () => {
 
   it('skips a candidate that has failed three times', async () => {
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({
@@ -130,7 +132,7 @@ describe('selectCandidate', () => {
 
   it('keeps a candidate that has failed twice', async () => {
     const candidate = await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({
@@ -145,7 +147,7 @@ describe('selectCandidate', () => {
     // multiply the request count by the pool size for no benefit.
     const getBlog = vi.fn(async (id: string) => blogDetail(blogItem({ id })))
     await selectCandidate(
-      'lab_article',
+      'labs',
       now,
       config,
       deps({
@@ -169,7 +171,7 @@ describe('selectCandidate for x_digest', () => {
 
   it("takes today's non-crypto digest", async () => {
     const candidate = await selectCandidate(
-      'x_digest',
+      'hot',
       now,
       config,
       deps({
@@ -193,7 +195,7 @@ describe('selectCandidate for x_digest', () => {
     // 09:00 to achieve that: the day's digests land at 09:05, so yesterday's
     // is already out of the 24h window whenever the digest is offered at all.
     const candidate = await selectCandidate(
-      'x_digest',
+      'hot',
       now,
       config,
       deps({
@@ -212,72 +214,40 @@ describe('selectCandidate for x_digest', () => {
   })
 })
 
-describe('selectCandidate for gh_project', () => {
-  function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
-    return {
-      id: 'ghp:a/b',
-      full_name: 'a/b',
-      description: 'A thing',
-      summary: 'A thing that does things.',
-      language: 'Rust',
-      topics: [],
-      tags: [],
-      license: 'MIT',
-      stars: 12_000,
-      forks: 400,
-      star_velocity_7d: 700,
-      star_velocity_per_day: 100,
-      momentum_score: 700,
-      pushed_at: '2026-08-05T02:00:00.000Z',
-      ...overrides,
-    }
-  }
+import { projectBlogListResponse } from '../sources/agentlens.fixtures.js'
 
-  const detail = (item: ProjectListItem): ProjectDetail => ({
-    ...item,
-    explainer_md: '## What it is\n\nA thing.',
-    html_url: `https://github.com/${item.full_name}`,
+describe('selectCandidate for the project tier', () => {
+  const projectDeps = deps({
+    listBlogs: vi
+      .fn()
+      .mockResolvedValue(projectBlogListResponse.items as BlogListItem[]),
+    getBlog: vi.fn(async (id: string) =>
+      blogDetail(
+        projectBlogListResponse.items.find(
+          (item) => item.id === id,
+        ) as BlogListItem,
+      ),
+    ),
   })
 
-  it('rejects a project below the momentum floor', async () => {
-    const candidate = await selectCandidate(
-      'gh_project',
-      now,
-      config,
-      deps({
-        listProjects: vi
-          .fn()
-          .mockResolvedValue([project({ star_velocity_per_day: 3 })]),
-        getProject: vi.fn(async () => detail(project())),
-      }),
-    )
-    expect(candidate).toBeNull()
+  /** 2026-08-13 10:00 Shanghai — inside the gh_project window for all four. */
+  const then = new Date('2026-08-13T02:00:00.000Z')
+
+  it('rejects the projects nobody is starring', async () => {
+    // stars_per_day of 1, 2 and 13 are all below the floor of 20. Losing
+    // this check is how the blogs stream becomes worse than what it replaced.
+    const candidate = await selectCandidate('project', then, config, projectDeps)
+    expect(candidate!.title).toContain('ante') // the 202 stars/day one
   })
 
-  it('rejects a project inside its cooldown', async () => {
-    const candidate = await selectCandidate(
-      'gh_project',
-      now,
-      config,
-      deps({
-        listProjects: vi.fn().mockResolvedValue([project()]),
-        getProject: vi.fn(async () => detail(project())),
-        projectPostedSince: vi.fn().mockResolvedValue(true),
-      }),
-    )
-    expect(candidate).toBeNull()
-  })
-
-  it('accepts a project that clears both gates', async () => {
-    const candidate = await selectCandidate(
-      'gh_project',
-      now,
-      config,
-      deps({
-        listProjects: vi.fn().mockResolvedValue([project()]),
-        getProject: vi.fn(async () => detail(project())),
-      }),
-    )
-    expect(candidate!.dedupeKey).toBe('agentlens:project:ghp:a/b:stars-10k')
+  it('finds nothing when every project is below the floor', async () => {
+    const strict = loadConfig({
+      LLM_MODEL: 'pinned',
+      TIMEZONE: 'Asia/Shanghai',
+      PROJECT_MIN_VELOCITY_PER_DAY: '500',
+    } as NodeJS.ProcessEnv)
+    expect(
+      await selectCandidate('project', then, strict, projectDeps),
+    ).toBeNull()
   })
 })

@@ -23,7 +23,7 @@ import {
   retryPolicyOf,
   shouldAlert,
 } from './retry.js'
-import { AgentLensClient } from './sources/agentlens.js'
+import { AgentLensClient, AgentLensError } from './sources/agentlens.js'
 import { GeneratorStore } from './store.js'
 
 const logger = createLogger('tweet-generator.log')
@@ -46,11 +46,21 @@ let lastVariant: string | null = null
 const deps: PoolDeps = {
   listBlogs: (jobType, limit) => agentlens.listBlogs(jobType, limit),
   getBlog: (id) => agentlens.getBlog(id),
-  listProjects: (limit) => agentlens.listProjects(limit),
-  getProject: (id) => agentlens.getProject(id),
+  // A repo that has left the leaderboard 404s here, which is ordinary: the
+  // dispatch is still worth posting, it just goes out without star counts.
+  // Any other failure is a real one and belongs to the cycle's error path.
+  getProject: async (id) => {
+    try {
+      return await agentlens.getProject(id)
+    } catch (error) {
+      if (error instanceof AgentLensError && /returned 404/.test(error.message)) {
+        return null
+      }
+      throw error
+    }
+  },
   knownDedupeKeys: (keys) => store.knownDedupeKeys(keys),
   failureCounts: (ids) => store.failureCounts(ids),
-  projectPostedSince: (ref, since) => store.projectPostedSince(ref, since),
 }
 
 let stopping = false
