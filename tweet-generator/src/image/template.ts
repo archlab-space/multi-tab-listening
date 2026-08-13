@@ -3,7 +3,7 @@ import type { Draft } from '../llm/assemble.js'
 import type { Candidate } from '../sources/candidates.js'
 import { interWoff2, monoWoff2 } from './fonts.js'
 
-export const WATERMARK = 'agentlenshq.com'
+export const WATERMARK = 'Data via <span class="wm-domain">agentlenshq.com</span>'
 
 /**
  * Visual variants per archetype.
@@ -120,8 +120,9 @@ body {
   border-top: 2px solid ${palette.rule};
   display: flex; justify-content: flex-end;
   font-family: 'CardMono', monospace;
-  font-size: 26px; color: ${palette.muted};
+  font-size: 30px; color: ${palette.muted};
 }
+.foot .wm-domain { color: ${palette.accent}; }
 </style>
 <div class="source">${escapeHtml(source)}</div>
 <div class="spacer"></div>
