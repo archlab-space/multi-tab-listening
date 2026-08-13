@@ -100,6 +100,12 @@ body {
   font-size: 30px; color: ${palette.accent};
   letter-spacing: 0.02em;
 }
+.credit {
+  margin-bottom: 14px;
+  font-family: 'CardMono', monospace;
+  font-size: 24px; letter-spacing: 0.03em; color: ${palette.muted};
+}
+.credit .wm-domain { color: ${palette.accent}; }
 .spacer { flex: 1; }
 .hook { font-size: 76px; line-height: 1.15; letter-spacing: -0.02em; }
 .rows { margin-top: 56px; display: flex; flex-direction: column; gap: 26px; }
@@ -115,19 +121,11 @@ body {
   color: ${palette.accent};
 }
 .line { margin-top: 48px; font-size: 46px; line-height: 1.3; color: ${palette.foreground}; }
-.foot {
-  margin-top: 64px; padding-top: 32px;
-  border-top: 2px solid ${palette.rule};
-  display: flex; justify-content: flex-end; gap: 14px;
-  font-family: 'CardMono', monospace;
-  font-size: 30px; color: ${palette.muted};
-}
-.foot .wm-domain { color: ${palette.accent}; }
 </style>
+<div class="credit">${WATERMARK}</div>
 <div class="source">${escapeHtml(source)}</div>
 <div class="spacer"></div>
-${body}
-<div class="foot">${WATERMARK}</div>`
+${body}`
 }
 
 export function renderTemplate(input: CardInput): string {
