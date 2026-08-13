@@ -46,6 +46,7 @@ describe('renderCard', () => {
       sourceUrl: null,
       freshness: new Date(),
       dedupeKey: 'k',
+      entities: [],
     } as Candidate
 
     const html = renderTemplate({

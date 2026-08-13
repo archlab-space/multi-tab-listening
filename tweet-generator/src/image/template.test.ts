@@ -13,6 +13,7 @@ const candidate: Candidate = {
   sourceUrl: 'https://github.com/a/b',
   freshness: new Date('2026-08-05T02:00:00.000Z'),
   dedupeKey: 'agentlens:project:ghp:a/b:stars-10k',
+  entities: [],
 }
 
 describe('pickVariant', () => {
