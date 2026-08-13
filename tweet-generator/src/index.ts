@@ -204,6 +204,8 @@ async function tick(): Promise<CycleOutcome> {
       sourceRef: candidate.externalId,
       archetype,
       mediaPath,
+      tier,
+      entities: candidate.entities,
     })
 
     if (id === null) {

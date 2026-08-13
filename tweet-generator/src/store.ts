@@ -28,6 +28,8 @@ export interface EnqueueInput {
   sourceRef?: string
   archetype?: TweetArchetype
   mediaPath?: string
+  tier?: Tier
+  entities?: string[]
 }
 
 /**
@@ -64,6 +66,8 @@ export class GeneratorStore {
         sourceRef: input.sourceRef ?? null,
         archetype: input.archetype ?? null,
         mediaPath: input.mediaPath ?? null,
+        tier: input.tier ?? null,
+        entities: input.entities ?? null,
       })
       .onConflictDoNothing({ target: tweets.dedupeKey })
       .returning({ id: tweets.id })

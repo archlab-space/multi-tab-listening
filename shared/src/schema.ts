@@ -207,6 +207,19 @@ export const tweets = pgTable(
       length: 20,
       enum: ['digest', 'metric', 'take', 'question'],
     }),
+    /**
+     * Which tier's allowance this post spent. Stored because the quota
+     * picker counts a day's usage from these rows after a restart.
+     */
+    tier: varchar('tier', { length: 10, enum: ['project', 'hot', 'labs'] }),
+    /**
+     * The searchable names this post is about.
+     *
+     * Write-only for now. A comparison post has to ask what we have already
+     * covered, and that history only exists if it was being recorded before
+     * the feature that reads it shipped.
+     */
+    entities: text('entities').array(),
   },
   (table) => [
     index('idx_tweets_claim').on(table.status, table.scheduledAt),
